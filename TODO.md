@@ -129,3 +129,19 @@ Same mechanism Open WebUI uses (client-side Pyodide = WASM CPython):
       pandas -> CSV -> csv-to-sheet (data never enters context)
 - [ ] System prompt section describing the environment (like Open WebUI
       injects; cf. Claude for Excel "Large Datasets" section)
+
+### OCR in the add-in: keep pdf.js for text, add PaddleOCR worker for scans
+Decision (2026-08-19): PDF text stays on the existing pdfjs-dist pipeline
+(`packages/sdk/src/pdf.ts`, `pdf-to-text` / `pdf-to-images` custom commands).
+OCR is NOT possible inside Pyodide (no tesseract/onnxruntime packages), so it
+lives in a separate JS/WASM stack next to the future Pyodide worker:
+- [ ] Vendor onnxruntime-web (wasm backend) + OpenCV.js + PaddleOCR ONNX
+      models (PP-OCRv5 det/rec, Cyrillic) into `powershell/offline/ocr/`
+      (~30-60 MB; served by server.ps1 like office-js/; fully offline)
+- [ ] New Web Worker loading the OCR stack; SDK tool / custom command `ocr`
+      taking an image path (or PDF page via pdf-to-images) -> text into VFS
+- [ ] Pipeline: pdf-to-images -> ocr -> text file -> csv-to-sheet / analysis
+      (data never enters model context)
+- [ ] tesseract.js as a light fallback (rus traineddata vendored), toggle in
+      settings; PaddleOCR is the default (better Cyrillic accuracy, ~96%)
+- [ ] System prompt section describing the OCR environment to the model
