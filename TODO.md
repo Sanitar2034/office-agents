@@ -94,3 +94,38 @@ No changes. `compactionSummary` is a custom `AgentMessage` that serializes into 
 - `ChatInterface`: disable input when `isCompacting`
 - `ChatInterface`: show compaction indicator (toast, inline status, or subtle banner)
 - Stats bar: update `lastInputTokens` after compaction to reflect reduced context
+
+## Fork: offline PowerShell edition — future work
+
+### Align Excel add-in system prompt with Claude for Excel (behavioral layer)
+Reference copy of the leaked official prompt (kept local, gitignored):
+`docs/reference/claude-for-excel-system-prompt.md` (source:
+https://github.com/asgeirtj/system_prompts_leaks/blob/main/Anthropic/claude-for-exel.md)
+Current state: tool skeleton matches (~same tool names, overwrite protection,
+citations, read-first), but the behavioral layer is missing. To port into
+`packages/excel/src/lib/system-prompt.ts` (+ Word/PPT equivalents):
+- [ ] Communication philosophy: "manager delegates", spreadsheet is the
+      deliverable / chat is the cover note, no preamble, no internals in chat
+- [ ] Interaction workflow: when to clarify vs proceed, plans with approval,
+      mid-task checkpoints, final review checklist, honest reporting
+- [ ] "Every derived number must be a formula" + Show Your Work (auditability)
+- [ ] Finance formatting: color coding, number formats, sensitivity tables,
+      group-not-hide, helper cells over deep nesting
+- [ ] Verification gotchas: check formula results before responding,
+      range auto-expansion on inserts, inherited formatting
+- [ ] New tools this implies (see "Python execution" below): large-dataset
+      analysis currently limited to VFS/bash pipes
+
+### In-browser Python execution (Pyodide) for heavy data analysis
+Same mechanism Open WebUI uses (client-side Pyodide = WASM CPython):
+- [ ] Vendor a trimmed Pyodide build (core ~7MB + numpy/pandas wheels
+      ~10-15MB; full dist is 200MB+) into `powershell/offline/pyodide/`,
+      served by server.ps1 like office-js/
+- [ ] Load pyodide.js in a Web Worker from the taskpane; WebView2 supports
+      WASM; works fully offline when vendored
+- [ ] SDK tool `python` { code }: exec in worker, capture stdout, bridge
+      files both ways with the VFS (uploads readable, results writable)
+- [ ] DataFrame round-trip: sheet -> CSV via existing custom commands ->
+      pandas -> CSV -> csv-to-sheet (data never enters context)
+- [ ] System prompt section describing the environment (like Open WebUI
+      injects; cf. Claude for Excel "Large Datasets" section)
