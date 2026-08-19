@@ -46,6 +46,9 @@ EXCEL READ:
 
 EXCEL WRITE:
 - set_cell_range: Write values, formulas, and formatting
+  Cell values must be plain primitives: "hello", 42, true. For formulas use the
+  "formula" field (or a value string starting with "="). Do NOT wrap values in
+  objects like {"text": ...} — the spreadsheet accepts only primitives.
 - clear_cell_range: Clear contents or formatting
 - copy_to: Copy ranges with formula translation
 - modify_sheet_structure: Insert/delete/hide rows/columns, freeze panes

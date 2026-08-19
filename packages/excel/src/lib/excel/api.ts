@@ -536,6 +536,53 @@ export async function getAllObjects(
   });
 }
 
+// Office.js range.values only accepts primitives (string/number/boolean/null).
+// Models sometimes send wrapper objects like {"text": "..."} or formula strings
+// ("=A1*2") in `value`; Office.js silently turns non-primitives into empty cells.
+// Normalize everything to a primitive value or a formula before writing.
+export function normalizeCellValue(
+  raw: unknown,
+): { value: unknown; formula: string | null } {
+  if (raw === null || raw === undefined) return { value: null, formula: null };
+  const t = typeof raw;
+  if (t === "string") {
+    const s = raw as string;
+    if (s.startsWith("=")) return { value: null, formula: s };
+    return { value: s, formula: null };
+  }
+  if (t === "number" || t === "boolean") return { value: raw, formula: null };
+  if (t === "object") {
+    const o = raw as Record<string, unknown>;
+    if (typeof o.formula === "string" && o.formula) {
+      return {
+        value: null,
+        formula: o.formula.startsWith("=") ? o.formula : `=${o.formula}`,
+      };
+    }
+    for (const key of ["text", "number", "boolean", "value", "date"]) {
+      const v = o[key];
+      if (v === null || v === undefined) continue;
+      if (typeof v === "string") {
+        if (v.startsWith("=")) return { value: null, formula: v };
+        if (key === "number" && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(v.trim())) {
+          return { value: Number(v), formula: null };
+        }
+        return { value: v, formula: null };
+      }
+      if (typeof v === "number" || typeof v === "boolean") {
+        return { value: v, formula: null };
+      }
+    }
+    // unknown object shape: stringify so nothing is silently lost
+    try {
+      return { value: JSON.stringify(raw), formula: null };
+    } catch {
+      return { value: String(raw), formula: null };
+    }
+  }
+  return { value: String(raw), formula: null };
+}
+
 export interface CellInput {
   value?: unknown;
   formula?: string;
@@ -644,12 +691,21 @@ export async function setCellRange(
       for (let c = 0; c < cells[r].length; c++) {
         const cell = cells[r][c];
         if (cell.formula) {
-          formulas[r][c] = cell.formula;
+          formulas[r][c] = cell.formula.startsWith("=")
+            ? cell.formula
+            : `=${cell.formula}`;
           values[r][c] = null;
           hasFormulas = true;
         } else {
-          values[r][c] = cell.value ?? null;
-          formulas[r][c] = null;
+          const norm = normalizeCellValue(cell.value);
+          if (norm.formula) {
+            formulas[r][c] = norm.formula;
+            values[r][c] = null;
+            hasFormulas = true;
+          } else {
+            values[r][c] = norm.value;
+            formulas[r][c] = null;
+          }
         }
       }
     }

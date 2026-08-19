@@ -63,8 +63,18 @@ const BorderStylesSchema = Type.Optional(
 );
 
 const CellSchema = Type.Object({
-  value: Type.Optional(Type.Any()),
-  formula: Type.Optional(Type.String()),
+  value: Type.Optional(
+    Type.Any({
+      description:
+        "Plain primitive: string, number, or boolean. NEVER wrap in an object " +
+        "({text:...} etc. get flattened). A string starting with '=' is treated as a formula.",
+    }),
+  ),
+  formula: Type.Optional(
+    Type.String({
+      description: "Excel formula including the leading '=', e.g. '=SUM(A1:A10)'",
+    }),
+  ),
   note: Type.Optional(Type.String()),
   cellStyles: CellStylesSchema,
   borderStyles: BorderStylesSchema,
