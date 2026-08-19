@@ -72,13 +72,18 @@ powershell/
 полностью локальный сервер.
 
 Проблема: таскпан работает по HTTPS, а локальные LLM-серверы обычно по HTTP — браузер
-блокирует такой запрос (mixed content), плюс бывает CORS. Решение — встроенный в
-`server.ps1` одноимённый (same-origin) прокси. Адрес бэкенда задаётся (по приоритету):
+блокирует такой запрос (mixed content), плюс бывает CORS. В настройках аддина
+(Settings → Custom Endpoint → LLM Connection) два режима:
 
-1. На один запуск: `.\start.ps1 -LlmProxyTarget http://192.168.1.50:11434`
-2. Постоянно: `server-config.json` рядом со скриптами (скопировать из
-   `server-config.json.example`, поле `llmProxyTarget`)
-3. Не задан — `/llm-proxy/*` отвечает 502
+- **Direct HTTPS** — адрес `https://`-сервера вписывается прямо в Base URL;
+  требуется доверенный сертификат и CORS (в настройках есть раскрывающиеся заметки
+  по включению CORS для vLLM / llama.cpp / Ollama).
+- **Local Proxy** — аддин использует `https://localhost:300X/llm-proxy/v1`, а
+  офлайн-сервер перенаправляет на бэкенд. Адрес бэкенда можно задать прямо из
+  настроек аддина (поле «LLM backend address» → Save): сервер применяет его
+  на лету и сохраняет в `server-config.json` (API `POST /oa-config/llm-target`,
+  принимает только same-origin запросы). Вне аддина — параметром
+  `.\start.ps1 -LlmProxyTarget http://...` или правкой `server-config.json`.
 
 Затем в настройках аддина (Settings → кастомный OpenAI-совместимый эндпоинт) укажите:
 
@@ -107,6 +112,15 @@ LM Studio и llama.cpp-server работают через прокси без д
   заменяются сводкой, сгенерированной той же моделью; последние сообщения остаются
   без изменений, разрыв пар «вызов инструмента → результат» не допускается.
 - Команда **`/compact`** в поле ввода чата сжимает контекст вручную.
+
+Промпт сжатия перенесён по открытому паттерну Claude Code (conversation
+summarization): этап анализа в `<analysis>`, затем структурированная `<summary>`
+из 9 секций — Primary Request and Intent, Key Technical Concepts, Document State,
+Errors and fixes, Problem Solving, All user messages (значимые инструкции —
+дословно), Pending Tasks, Current Work, Optional Next Step (с дословной цитатой,
+где остановились). Источники паттерна: [репозиторий системных промптов Claude
+Code](https://github.com/Piebald-AI/claude-code-system-prompts/blob/main/system-prompts/agent-prompt-conversation-summarization.md),
+[официальная документация Compaction](https://platform.claude.com/docs/en/build-with-claude/compaction).
 
 Реализация: `packages/sdk/src/runtime.ts` (`compactContext`, `estimateContextTokens`,
 авто-триггер в `sendMessage`), поля в `provider-config.ts`, команда в

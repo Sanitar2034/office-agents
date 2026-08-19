@@ -104,12 +104,34 @@ const AUTO_COMPACT_THRESHOLD = 0.8;
 /** Messages kept verbatim (never summarized) during compaction. */
 const COMPACT_KEEP_RECENT = 6;
 
-const COMPACT_SYSTEM_PROMPT =
-  "You compress conversation history for an AI office assistant. " +
-  "Write a dense summary in the same language as the conversation: " +
-  "goals, established facts, decisions made, current document/spreadsheet/presentation state, " +
-  "names, paths and IDs that matter, and open threads. Keep it under ~600 words. " +
-  "Output only the summary itself.";
+// Compaction prompt patterned after the open-sourced Claude Code conversation
+// summarization prompt (analysis pass -> structured <summary>, user messages and
+// security-relevant constraints preserved, next step quoted verbatim), adapted
+// to document/spreadsheet/presentation work.
+const COMPACT_SYSTEM_PROMPT = [
+  "Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.",
+  "",
+  "First analyze the conversation inside <analysis> tags: go through it chronologically and identify each user request, decision, document/spreadsheet/presentation state change, tool call and its result, every error and how it was fixed, and any user feedback.",
+  "",
+  "Then output the summary inside <summary> tags with exactly these sections:",
+  "1. Primary Request and Intent: the user's overall goal and every explicit request, including clarifications made along the way.",
+  "2. Key Technical Concepts: document structure, formulas, ranges, styles, OOXML details, formats or conventions that matter for continuing the work.",
+  "3. Document State: every file, sheet, slide, range or selection the conversation touched, what was read or written, and its current state.",
+  "4. Errors and fixes: every error encountered and how it was resolved, or 'None'.",
+  "5. Problem Solving: the approach taken and why; alternatives considered.",
+  "6. All user messages: every genuine user request in this conversation, compressed but faithful; quote security-relevant instructions and constraints verbatim so they continue to apply after compaction.",
+  "7. Pending Tasks: anything explicitly requested but not yet completed, or 'None'.",
+  "8. Current Work: what was being worked on most recently.",
+  "9. Optional Next Step: the immediate next action, quoting the last exchange verbatim where work left off.",
+  "",
+  "Be detailed and factual: this summary replaces the earlier conversation, so nothing important may be lost. Do not invent facts.",
+].join("\n");
+
+function extractSummaryBlock(text: string): string {
+  const m = text.match(/<summary>([\s\S]*?)<\/summary>/i);
+  if (m) return m[1].trim();
+  return text.replace(/<analysis>[\s\S]*?<\/analysis>/gi, "").trim();
+}
 
 function truncateText(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…[truncated]`;
@@ -739,16 +761,18 @@ export class AgentRuntime {
     let summary = "";
     summarizer.subscribe((event: AgentEvent) => {
       if (event.type === "message_end" && event.message.role === "assistant") {
-        summary = (event.message as AssistantMessage).content
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("\n")
-          .trim();
+        summary = extractSummaryBlock(
+          (event.message as AssistantMessage).content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("\n")
+            .trim(),
+        );
       }
     });
     try {
       await summarizer.prompt(
-        "Compress this conversation history:\n\n<transcript>\n" +
+        "Summarize the following conversation history for continuation:\n\n<transcript>\n" +
           transcript +
           "\n</transcript>",
       );

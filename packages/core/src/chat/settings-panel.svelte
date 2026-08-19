@@ -56,6 +56,71 @@
   let contextLimit = $state<number>(saved?.contextLimit ?? 0);
   let autoCompact = $state(saved?.autoCompact !== false);
 
+  // LLM connection: direct https endpoint vs the offline PowerShell server's
+  // same-origin /llm-proxy (backend address managed via /oa-config/llm-target).
+  const initialConnectionMode: "direct" | "proxy" = (saved?.customBaseUrl || "").includes(
+    "/llm-proxy",
+  )
+    ? "proxy"
+    : "direct";
+  let connectionMode = $state<"direct" | "proxy">(initialConnectionMode);
+  let proxyBackend = $state("");
+  let proxyBusy = $state(false);
+  let proxyStatus = $state<"idle" | "checking" | "ok" | "saved" | "error">("idle");
+  let proxyMessage = $state("");
+  let showDirectHelp = $state(false);
+
+  async function loadProxyBackend(): Promise<void> {
+    proxyStatus = "checking";
+    proxyMessage = "";
+    try {
+      const res = await fetch(`${location.origin}/oa-config/llm-target`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { llmProxyTarget?: string };
+      proxyBackend = data.llmProxyTarget || "";
+      proxyStatus = "ok";
+    } catch (err) {
+      proxyStatus = "error";
+      proxyMessage = err instanceof Error ? err.message : "request failed";
+    }
+  }
+
+  async function saveProxyBackend(): Promise<void> {
+    const value = proxyBackend.trim().replace(/\/+$/, "");
+    if (!/^https?:\/\/[^\s]+$/i.test(value)) {
+      proxyStatus = "error";
+      proxyMessage = "Address must start with http:// or https://";
+      return;
+    }
+    proxyBusy = true;
+    try {
+      const res = await fetch(`${location.origin}/oa-config/llm-target`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ llmProxyTarget: value }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      updateAndSync({ customBaseUrl: `${location.origin}/llm-proxy/v1` });
+      proxyStatus = "saved";
+      proxyMessage = "";
+    } catch (err) {
+      proxyStatus = "error";
+      proxyMessage = err instanceof Error ? err.message : "request failed";
+    } finally {
+      proxyBusy = false;
+    }
+  }
+
+  function setConnectionMode(mode: "direct" | "proxy"): void {
+    connectionMode = mode;
+    if (mode === "proxy") void loadProxyBackend();
+  }
+
+  if (initialConnectionMode === "proxy") void loadProxyBackend();
+
   const savedWeb = loadWebConfig(ns);
   let webSearchProvider = $state(savedWeb.searchProvider);
   let imageSearchProvider = $state(savedWeb.imageSearchProvider);
@@ -401,6 +466,104 @@
           </p>
         </label>
 
+        <div>
+          <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+            LLM Connection
+          </span>
+          <div class="flex gap-1">
+            <button
+              type="button"
+              onclick={() => setConnectionMode("direct")}
+              class={`flex-1 py-1.5 text-xs border transition-colors ${connectionMode === "direct" ? "bg-(--chat-accent) border-(--chat-accent) text-white" : "bg-(--chat-input-bg) border-(--chat-border) text-(--chat-text-secondary) hover:border-(--chat-border-active)"}`}
+              style="border-radius: var(--chat-radius)"
+            >
+              Direct HTTPS
+            </button>
+            <button
+              type="button"
+              onclick={() => setConnectionMode("proxy")}
+              class={`flex-1 py-1.5 text-xs border transition-colors ${connectionMode === "proxy" ? "bg-(--chat-accent) border-(--chat-accent) text-white" : "bg-(--chat-input-bg) border-(--chat-border) text-(--chat-text-secondary) hover:border-(--chat-border-active)"}`}
+              style="border-radius: var(--chat-radius)"
+            >
+              Local Proxy
+            </button>
+          </div>
+
+          {#if connectionMode === "direct"}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              Enter the full https:// base URL below. The LLM server must use a
+              certificate trusted on this machine and must allow CORS from Office
+              taskpanes. HTTP-only servers (Ollama, LM Studio) — use Local Proxy.
+            </p>
+            <button
+              type="button"
+              onclick={() => (showDirectHelp = !showDirectHelp)}
+              class="mt-1 text-[10px] text-(--chat-text-secondary) underline hover:text-(--chat-text-primary)"
+            >
+              {showDirectHelp ? "Hide" : "Show"} direct-connection setup notes
+            </button>
+            {#if showDirectHelp}
+              <div class="mt-1 p-2 border border-(--chat-border) text-[10px] text-(--chat-text-muted) space-y-1" style="border-radius: var(--chat-radius)">
+                <p><b>vLLM</b>: HTTPS via <code>--ssl-certfile</code>/<code>--ssl-key-file</code>; allow taskpanes with
+                  <code>--allowed-origins '["https://localhost:3000","https://localhost:3001","https://localhost:3002"]'</code></p>
+                <p><b>llama.cpp (llama-server)</b>: CORS is permissive by default; for HTTPS put it behind a TLS reverse proxy</p>
+                <p><b>Ollama</b>: HTTP only by default — use Local Proxy, or a TLS reverse proxy with <code>OLLAMA_ORIGINS=https://localhost:3000,https://localhost:3001,https://localhost:3002</code></p>
+                <p><b>LM Studio</b>: HTTP only — use Local Proxy</p>
+                <p>Self-signed certificates must be trusted in the current user's Windows certificate store, otherwise the taskpane will reject them — or use Local Proxy.</p>
+              </div>
+            {/if}
+          {:else}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              The offline PowerShell server forwards <code>/llm-proxy/*</code> to your
+              LLM backend — works with plain HTTP backends and needs no CORS. The Base
+              URL is managed automatically.
+            </p>
+            <label class="block mt-2">
+              <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+                LLM backend address
+              </span>
+              <div class="flex gap-1">
+                <input
+                  type="text"
+                  bind:value={proxyBackend}
+                  placeholder="http://192.168.1.50:11434"
+                  class="flex-1 min-w-0 bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onclick={saveProxyBackend}
+                  disabled={proxyBusy}
+                  class="px-3 py-2 text-xs border border-(--chat-border) text-(--chat-text-secondary) hover:border-(--chat-border-active) disabled:opacity-50"
+                  style="border-radius: var(--chat-radius)"
+                >
+                  {proxyBusy ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </label>
+            {#if proxyStatus === "checking"}
+              <p class="text-[10px] text-(--chat-text-muted) mt-1">Checking offline server…</p>
+            {:else if proxyStatus === "error"}
+              <p class="text-[10px] text-(--chat-text-muted) mt-1">
+                Offline server unreachable ({proxyMessage}) — run start.ps1 on this machine.
+              </p>
+            {:else if proxyStatus === "saved"}
+              <p class="text-[10px] text-(--chat-text-muted) mt-1">
+                Saved — backend set, Base URL = {location.origin}/llm-proxy/v1
+              </p>
+            {:else if proxyStatus === "ok" && proxyBackend}
+              <p class="text-[10px] text-(--chat-text-muted) mt-1">
+                Current backend: {proxyBackend}
+              </p>
+            {:else if proxyStatus === "ok"}
+              <p class="text-[10px] text-(--chat-text-muted) mt-1">
+                No backend configured yet — enter the address and Save.
+              </p>
+            {/if}
+          {/if}
+        </div>
+
+        {#if connectionMode === "direct"}
         <label class="block">
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
             Base URL
@@ -417,6 +580,16 @@
             The API endpoint URL for your provider
           </p>
         </label>
+        {:else}
+        <div>
+          <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+            Base URL
+          </span>
+          <p class="text-[10px] text-(--chat-text-muted)">
+            {location.origin}/llm-proxy/v1 (managed by Local Proxy mode)
+          </p>
+        </div>
+        {/if}
 
         <label class="block">
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">

@@ -83,7 +83,6 @@ foreach ($p in $portMap.Keys) {
         SiteDir    = $portMap[$p]
         OfficeJs   = $officeJsRoot
         Cert       = $cert
-        LlmTarget  = $LlmProxyTarget
         Port       = $portNum
     }
     Write-Host "Listening on https://$BindAddress`:$portNum/  ->  $($portMap[$p])"
@@ -99,6 +98,12 @@ Write-Host 'Press Ctrl+C to stop.'
 $pool = [RunspaceFactory]::CreateRunspacePool(1, 8)
 $pool.Open()
 
+# shared live state, visible to all runspaces (updated by /oa-config/llm-target)
+$sync = [hashtable]::Synchronized(@{
+    LlmTarget = $LlmProxyTarget
+    ConfigFile = $configFile
+})
+
 $handlerScript = ". '$libPath'; Handle-OaConnection @args"
 
 $jobs = New-Object System.Collections.ArrayList
@@ -113,7 +118,7 @@ try {
                 $ps.RunspacePool = $pool
                 $null = $ps.AddScript($handlerScript).
                     AddArgument($client).AddArgument($ctx.SiteDir).AddArgument($ctx.OfficeJs).
-                    AddArgument($ctx.Cert).AddArgument($ctx.LlmTarget)
+                    AddArgument($ctx.Cert).AddArgument($sync)
                 $handle = $ps.BeginInvoke()
                 [void]$jobs.Add(@{ PS = $ps; Handle = $handle })
             }

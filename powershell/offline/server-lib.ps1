@@ -143,8 +143,66 @@ function Invoke-OaProxy {
     }
 }
 
+function Set-OaServerConfig {
+    param([string]$ConfigFile, [string]$Target)
+    $json = '{"llmProxyTarget":' + ($Target | ConvertTo-Json) + '}'
+    Set-Content -LiteralPath $ConfigFile -Value $json -Encoding UTF8
+}
+
+function Handle-OaConfig {
+    # GET/POST /oa-config/llm-target - lets the add-in read and change the
+    # LLM backend address live (persisted to server-config.json).
+    param($Ssl, $Req, $Sync, [bool]$HeadOnly)
+    if ($Req.Method -eq 'GET' -or $Req.Method -eq 'HEAD') {
+        $json = '{"llmProxyTarget":' + ([string]$Sync.LlmTarget | ConvertTo-Json) + '}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "GET /oa-config/llm-target [200]"
+    }
+    if ($Req.Method -eq 'POST') {
+        # only same-origin taskpanes may change the backend address
+        $origin = [string]$Req.Headers['origin']
+        if (-not $origin -or -not $origin.StartsWith('https://localhost:')) {
+            Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
+            return "POST /oa-config/llm-target [403 bad origin]"
+        }
+        $target = ''
+        try {
+            $bodyText = ''
+            if ($Req.Body) { $bodyText = [Text.Encoding]::UTF8.GetString($Req.Body) }
+            $parsed = $bodyText | ConvertFrom-Json
+            $target = [string]$parsed.llmProxyTarget
+        } catch {
+            Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'invalid JSON body' -HeadOnly $HeadOnly
+            return "POST /oa-config/llm-target [400]"
+        }
+        $target = $target.Trim().TrimEnd('/')
+        if ($target -and $target -notmatch '^https?://[^\s]+$') {
+            Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'llmProxyTarget must be an http(s):// URL' -HeadOnly $HeadOnly
+            return "POST /oa-config/llm-target [400 bad url]"
+        }
+        if ($target.Length -ge 500) {
+            Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'llmProxyTarget too long' -HeadOnly $HeadOnly
+            return "POST /oa-config/llm-target [400]"
+        }
+        try {
+            if ($Sync.ConfigFile) { Set-OaServerConfig -ConfigFile $Sync.ConfigFile -Target $target }
+        } catch {
+            Send-OaError -Ssl $Ssl -Code 500 -Status 'Server Error' -Message "cannot write config: $($_.Exception.Message)" -HeadOnly $HeadOnly
+            return "POST /oa-config/llm-target [500]"
+        }
+        $Sync.LlmTarget = $target
+        $json = '{"ok":true,"llmProxyTarget":' + ($target | ConvertTo-Json) + '}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "POST /oa-config/llm-target [200 -> $target]"
+    }
+    Send-OaError -Ssl $Ssl -Code 405 -Status 'Method Not Allowed' -Message 'GET or POST only' -HeadOnly $HeadOnly
+    return "$($Req.Method) /oa-config/llm-target [405]"
+}
+
 function Handle-OaConnection {
-    param($Client, [string]$SiteDir, [string]$OfficeJsDir, $Cert, [string]$LlmTarget)
+    param($Client, [string]$SiteDir, [string]$OfficeJsDir, $Cert, $Sync)
     try {
         $Client.NoDelay = $true
         $Client.ReceiveTimeout = 30000
@@ -171,6 +229,12 @@ function Handle-OaConnection {
             # so the base must be canonical too or the prefix check fails
             $siteRootN = [IO.Path]::GetFullPath($SiteDir.TrimEnd('\') + '\')
             $ojRootN = [IO.Path]::GetFullPath($OfficeJsDir.TrimEnd('\') + '\')
+
+            $LlmTarget = [string]$Sync.LlmTarget
+
+            if ($rawUrl.StartsWith('/oa-config/')) {
+                return (Handle-OaConfig -Ssl $ssl -Req $req -Sync $Sync -HeadOnly $headOnly)
+            }
 
             if ($rawUrl.StartsWith('/llm-proxy') -and $LlmTarget) {
                 return (Invoke-OaProxy -Ssl $ssl -Req $req -Target $LlmTarget -HeadOnly $headOnly)
