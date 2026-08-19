@@ -1,5 +1,12 @@
 # Office Agents
 
+> **Fork note (offline / PowerShell edition):** this fork adds [`powershell/`](./powershell) —
+> a self-contained offline deployment: a pure Windows PowerShell 5.1 HTTPS static server
+> (replaces the Node/Vite dev server), a vendored local copy of Office.js (replaces the
+> CDN), per-user certificate + trusted add-in catalog setup with **no admin rights**, and a
+> same-origin LLM proxy for OpenAI-compatible endpoints on the LAN. Add-ins and manifests
+> are unchanged. Docs in Russian: [`powershell/README.md`](./powershell/README.md).
+
 Office Agents is a monorepo of Microsoft Office Add-ins with integrated AI chat panels. Each add-in connects to major LLM providers using your own credentials (BYOK) and can read/write documents through built-in tools, a sandboxed shell, and a virtual filesystem.
 
 https://github.com/user-attachments/assets/50f3ba42-4daa-49d8-b31e-bae9be6e225b
