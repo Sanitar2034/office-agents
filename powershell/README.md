@@ -7,20 +7,22 @@
 Аддины Word/Excel/PowerPoint и их манифесты не изменялись. Заменена только инфраструктура
 запуска: вместо Node-сервера статики (Vite) — чистый PowerShell HTTPS-сервер.
 
-## Как это устроено
+## Структура
 
 ```
 powershell/
-  install.ps1        разовая настройка на целевой машине (без админа)
-  start.ps1          запуск сервера (+ опционально приложений Office)
-  server.ps1         HTTPS-сервер статики + LLM-прокси
-  server-lib.ps1     библиотека HTTP-функций
-  uninstall.ps1      полное удаление следов установки
-  build-package.ps1  пересборка пакета (запускать только на машине с интернетом и Node.js)
-  site/              собранные аддины: excel (порт 3000), powerpoint (3001), word (3002)
-  office-js/         локальная копия Office.js (замена CDN appsforoffice.microsoft.com)
-  manifests/         манифесты аддинов (как в оригинале, указывают на localhost:3000-3002)
-  server-config.json.example  шаблон конфига LLM-прокси
+  offline/                     ЕДИНСТВЕННАЯ папка для офлайн-машины — копируйте её целиком
+    QUICKSTART.md                краткая инструкция на русском (самодостаточная)
+    install.ps1                  разовая настройка на целевой машине (без админа)
+    start.ps1                    запуск сервера (+ опционально приложений Office)
+    server.ps1 / server-lib.ps1  HTTPS-сервер статики + LLM-прокси
+    uninstall.ps1                полное удаление следов установки
+    server-config.json.example   шаблон конфига LLM-прокси
+    site/                        собранные аддины: excel (3000), powerpoint (3001), word (3002)
+    office-js/                   локальная копия Office.js (замена CDN)
+    manifests/                   манифесты аддинов (localhost:3000-3002, как в оригинале)
+  build-package.ps1            пересборка offline/ (запускать только на машине с интернетом и Node.js)
+  tests/                       dev-инструменты (mock LLM-сервер)
 ```
 
 Что заменило каждую интернет/Node-зависимость:
@@ -38,7 +40,9 @@ powershell/
 
 ## Развёртывание на офлайн-машине
 
-1. Скопируйте папку `powershell/` целиком (с `site/`, `office-js/`, `manifests/`) с флешки.
+Всё нужное — в одной папке `powershell/offline/`:
+
+1. Скопируйте её с флешки целиком.
 2. В PowerShell перейдите в эту папку и выполните:
 
    ```powershell
@@ -69,12 +73,14 @@ powershell/
 
 Проблема: таскпан работает по HTTPS, а локальные LLM-серверы обычно по HTTP — браузер
 блокирует такой запрос (mixed content), плюс бывает CORS. Решение — встроенный в
-`server.ps1` одноимённый (same-origin) прокси:
+`server.ps1` одноимённый (same-origin) прокси. Адрес бэкенда задаётся (по приоритету):
 
-1. Скопируйте `server-config.json.example` в `server-config.json` и укажите адрес
-   вашего LLM-сервера, например `http://192.168.1.50:11434` (Ollama).
-2. Перезапустите `start.ps1`.
-3. В настройках аддина (Settings → кастомный OpenAI-совместимый эндпоинт) укажите:
+1. На один запуск: `.\start.ps1 -LlmProxyTarget http://192.168.1.50:11434`
+2. Постоянно: `server-config.json` рядом со скриптами (скопировать из
+   `server-config.json.example`, поле `llmProxyTarget`)
+3. Не задан — `/llm-proxy/*` отвечает 502
+
+Затем в настройках аддина (Settings → кастомный OpenAI-совместимый эндпоинт) укажите:
 
    - Excel: `https://localhost:3000/llm-proxy/v1`
    - PowerPoint: `https://localhost:3001/llm-proxy/v1`
@@ -89,6 +95,22 @@ SSE-ответы (`stream: true`) — токены появляются в ча�
 Замечания по серверам: у Ollama разрешите источники (переменная `OLLAMA_ORIGINS=*`)
 или используйте прокси (через прокси CORS не важен — запрос same-origin).
 LM Studio и llama.cpp-server работают через прокси без доп. настроек.
+
+## Контекст и сжатие (доработка форка)
+
+В настройки аддинов добавлены:
+
+- **Context Limit (tokens)** — лимит контекста; `0` = брать из каталога модели.
+  Для локальных моделей указывайте реальное значение — для кастомных эндпоинтов
+  каталог не известен и подставляется 128k.
+- **Auto-compact Context** — при достижении ~80% лимита старые сообщения автоматически
+  заменяются сводкой, сгенерированной той же моделью; последние сообщения остаются
+  без изменений, разрыв пар «вызов инструмента → результат» не допускается.
+- Команда **`/compact`** в поле ввода чата сжимает контекст вручную.
+
+Реализация: `packages/sdk/src/runtime.ts` (`compactContext`, `estimateContextTokens`,
+авто-триггер в `sendMessage`), поля в `provider-config.ts`, команда в
+`packages/core/src/chat/chat-input.svelte`, UI в `settings-panel.svelte`.
 
 ## Проверка установки
 
@@ -107,16 +129,17 @@ LM Studio и llama.cpp-server работают через прокси без д
 
 ## Пересборка (на машине с интернетом)
 
-Папка `site/` уже содержит собранные аддины. Чтобы пересобрать после изменений в
+Папка `offline/site/` уже содержит собранные аддины. Чтобы пересобрать после изменений в
 репозитории (нужны Node.js и pnpm):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-package.ps1
 ```
 
-Скрипт: `pnpm install` + `pnpm build`, копирует `packages/*/dist` в `site/`, вендорит
-Office.js из npm-пакета `@microsoft/office-js`, переписывает CDN-ссылку в HTML на
-`/office-js/office.js`, копирует манифесты.
+Скрипт: `pnpm install` + `pnpm build`, обновляет скрипты в `offline/`, копирует
+`packages/*/dist` в `offline/site/`, вендорит Office.js из npm-пакета
+`@microsoft/office-js`, переписывает CDN-ссылку в HTML на `/office-js/office.js`,
+копирует манифесты.
 
 ## Отсутствующее в офлайн-редакции
 
@@ -128,5 +151,5 @@ Office.js из npm-пакета `@microsoft/office-js`, переписывает
 
 - `tests/mock-llm.js` — мок OpenAI-совместимого сервера (нужен Node.js, только для
   разработки): `node tests\mock-llm.js`, затем запустите
-  `server.ps1 -LlmProxyTarget http://127.0.0.1:8899` и проверьте
+  `offline\server.ps1 -LlmProxyTarget http://127.0.0.1:8899` и проверьте
   `https://localhost:3000/llm-proxy/v1/models`.

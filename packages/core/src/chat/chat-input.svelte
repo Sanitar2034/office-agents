@@ -34,6 +34,12 @@
     const trimmed = input.trim();
     if (!trimmed || $runtimeState.isStreaming) return;
 
+    if (trimmed === "/compact" || trimmed.startsWith("/compact ")) {
+      input = "";
+      await chat.compactContext();
+      return;
+    }
+
     const attachmentNames = $runtimeState.uploads.map((upload) => upload.name);
     input = "";
     await chat.sendMessage(

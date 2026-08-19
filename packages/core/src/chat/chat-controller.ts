@@ -51,6 +51,10 @@ export class ChatController {
     return this.#runtime.sendMessage(content, attachments);
   }
 
+  compactContext() {
+    return this.#runtime.compactContext();
+  }
+
   setProviderConfig(config: ProviderConfig) {
     this.#runtime.setProviderConfig(config);
   }

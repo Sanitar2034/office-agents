@@ -13,6 +13,10 @@ export interface ProviderConfig {
   thinking: ThinkingLevel;
   followMode: boolean;
   expandToolCalls: boolean;
+  /** Max context in tokens; 0 = use the model's declared context window. */
+  contextLimit: number;
+  /** Summarize older messages when the context nears the limit. */
+  autoCompact: boolean;
   apiType?: string;
   customBaseUrl?: string;
   authMethod?: "apikey" | "oauth";
@@ -75,6 +79,8 @@ export function loadSavedConfig(ns: StorageNamespace): ProviderConfig | null {
       if (config.apiType === undefined) config.apiType = "";
       if (config.customBaseUrl === undefined) config.customBaseUrl = "";
       if (config.authMethod === undefined) config.authMethod = "apikey";
+      if (config.contextLimit === undefined) config.contextLimit = 0;
+      if (config.autoCompact === undefined) config.autoCompact = true;
       if (config.authMethod === "oauth") {
         const creds = loadOAuthCredentials(ns, config.provider);
         if (creds) config.apiKey = creds.access;

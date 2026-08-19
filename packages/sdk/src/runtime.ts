@@ -1,6 +1,7 @@
 import {
   Agent,
   type AgentEvent,
+  type AgentMessage,
   type ThinkingLevel as AgentThinkingLevel,
   type AgentTool,
 } from "@earendil-works/pi-agent-core";
@@ -12,6 +13,9 @@ import {
   getProviders,
   type Model,
   streamSimple,
+  type TextContent,
+  type ToolResultMessage,
+  type UserMessage,
 } from "@earendil-works/pi-ai";
 import type { AgentContext, StorageNamespace } from "./context";
 import {
@@ -21,6 +25,7 @@ import {
   extractPartsFromAssistantMessage,
   generateId,
   type SessionStats,
+  stripEnrichment,
 } from "./message-utils";
 import {
   loadOAuthCredentials,
@@ -93,6 +98,31 @@ export interface RuntimeState {
 type StateListener = (state: RuntimeState) => void;
 
 const INITIAL_STATS: SessionStats = { ...deriveStats([]), contextWindow: 0 };
+
+/** Compact when the estimated context reaches this share of the limit. */
+const AUTO_COMPACT_THRESHOLD = 0.8;
+/** Messages kept verbatim (never summarized) during compaction. */
+const COMPACT_KEEP_RECENT = 6;
+
+const COMPACT_SYSTEM_PROMPT =
+  "You compress conversation history for an AI office assistant. " +
+  "Write a dense summary in the same language as the conversation: " +
+  "goals, established facts, decisions made, current document/spreadsheet/presentation state, " +
+  "names, paths and IDs that matter, and open threads. Keep it under ~600 words. " +
+  "Output only the summary itself.";
+
+function truncateText(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}…[truncated]`;
+}
+
+function textFromContent(
+  content: (TextContent | { type: string })[],
+): string {
+  return content
+    .filter((c): c is TextContent => c.type === "text")
+    .map((c) => c.text)
+    .join("\n");
+}
 
 function thinkingLevelToAgent(level: ThinkingLevel): AgentThinkingLevel {
   return level === "none" ? "off" : level;
@@ -439,9 +469,16 @@ export class AgentRuntime {
       }
     }
     contextWindow = baseModel.contextWindow;
+    if (config.contextLimit && config.contextLimit > 0) {
+      contextWindow = config.contextLimit;
+    }
     this.config = config;
 
-    const proxiedModel = applyProxyToModel(baseModel, config);
+    let modelForAgent = baseModel;
+    if (contextWindow !== baseModel.contextWindow) {
+      modelForAgent = { ...baseModel, contextWindow };
+    }
+    const proxiedModel = applyProxyToModel(modelForAgent, config);
     const existingMessages = this.agent?.state.messages ?? [];
 
     if (this.agent) {
@@ -510,6 +547,14 @@ export class AgentRuntime {
       return;
     }
 
+    if (this.shouldAutoCompact()) {
+      try {
+        await this.compactContext();
+      } catch (err) {
+        console.error("[Runtime] auto-compact failed:", err);
+      }
+    }
+
     const userMessage: ChatMessage = {
       id: generateId(),
       role: "user",
@@ -558,6 +603,194 @@ export class AgentRuntime {
         error: err instanceof Error ? err.message : "An error occurred",
       });
     }
+  }
+
+  /**
+   * Rough context estimate in tokens: max of a chars/4 heuristic over the
+   * agent transcript and the real input-token count of the last request.
+   */
+  estimateContextTokens(): number {
+    const agent = this.agent;
+    if (!agent) return 0;
+    let chars = agent.state.systemPrompt?.length ?? 0;
+    for (const msg of agent.state.messages) {
+      chars += JSON.stringify(msg).length;
+    }
+    const estimate = Math.ceil(chars / 4);
+    return Math.max(estimate, this.state.sessionStats.lastInputTokens);
+  }
+
+  getContextUsage(): { used: number; limit: number; percent: number } {
+    const limit = this.state.sessionStats.contextWindow;
+    const used = this.estimateContextTokens();
+    return {
+      used,
+      limit,
+      percent: limit > 0 ? Math.min(100, (used / limit) * 100) : 0,
+    };
+  }
+
+  private shouldAutoCompact(): boolean {
+    const config = this.config;
+    if (!config || !this.agent || this.isStreaming) return false;
+    if (config.autoCompact === false) return false;
+    const limit = this.state.sessionStats.contextWindow;
+    if (!limit || limit <= 0) return false;
+    if (this.agent.state.messages.length <= COMPACT_KEEP_RECENT + 2) {
+      return false;
+    }
+    return this.estimateContextTokens() >= limit * AUTO_COMPACT_THRESHOLD;
+  }
+
+  private buildCompactTranscript(messages: AgentMessage[]): string {
+    const lines: string[] = [];
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        const text = stripEnrichment(
+          (msg as UserMessage).content,
+          this.adapter.metadataTag,
+        );
+        lines.push(`USER: ${truncateText(text, 4000)}`);
+      } else if (msg.role === "assistant") {
+        const parts: string[] = [];
+        for (const block of (msg as AssistantMessage).content) {
+          if (block.type === "text") {
+            parts.push(truncateText(block.text, 2000));
+          } else if (block.type === "thinking") {
+            // skip reasoning traces
+          } else {
+            const call = block as { name?: string; arguments?: unknown };
+            parts.push(
+              `[tool ${call.name ?? "?"}(${truncateText(
+                JSON.stringify(call.arguments ?? {}),
+                300,
+              )})]`,
+            );
+          }
+        }
+        lines.push(`ASSISTANT: ${parts.join(" | ") || "(no text)"}`);
+      } else if (msg.role === "toolResult") {
+        const tr = msg as ToolResultMessage;
+        lines.push(
+          `TOOL RESULT${tr.isError ? " (error)" : ""}: ${truncateText(
+            textFromContent(tr.content as (TextContent | { type: string })[]),
+            800,
+          )}`,
+        );
+      }
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * Replace older messages with an LLM-generated summary, keeping the recent
+   * tail verbatim. Triggered automatically near the context limit and by the
+   * /compact chat command.
+   */
+  async compactContext(keepRecent: number = COMPACT_KEEP_RECENT): Promise<boolean> {
+    const agent = this.agent;
+    const config = this.config;
+    if (!agent || !config) {
+      this.update({ error: "Настройте модель перед сжатием контекста" });
+      return false;
+    }
+    if (this.isStreaming) {
+      this.update({ error: "Дождитесь окончания ответа" });
+      return false;
+    }
+    const messages = [...agent.state.messages];
+    if (messages.length <= keepRecent + 2) {
+      this.update({ error: "Контекст ещё мал — сжимать нечего" });
+      return false;
+    }
+
+    // Split on a turn boundary (user message) so no tool call/result pair is cut.
+    let split = Math.max(1, messages.length - keepRecent);
+    for (let i = messages.length - keepRecent; i >= Math.max(1, split - 30); i--) {
+      if (messages[i]?.role === "user") {
+        split = i;
+        break;
+      }
+    }
+    while (split < messages.length && messages[split].role === "toolResult") {
+      split++;
+    }
+    if (split <= 0 || split >= messages.length - 1) {
+      this.update({ error: "Контекст ещё мал — сжимать нечего" });
+      return false;
+    }
+
+    const oldMessages = messages.slice(0, split);
+    const kept = messages.slice(split);
+    const transcript = this.buildCompactTranscript(oldMessages);
+
+    const apiKey = await this.getActiveApiKey(config);
+    const summarizer = new Agent({
+      initialState: {
+        model: agent.state.model,
+        systemPrompt: COMPACT_SYSTEM_PROMPT,
+        thinkingLevel: "off",
+        tools: [],
+        messages: [],
+      },
+      streamFn: async (model, context, options) =>
+        streamSimple(model, context, { ...options, apiKey }),
+    });
+    let summary = "";
+    summarizer.subscribe((event: AgentEvent) => {
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        summary = (event.message as AssistantMessage).content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join("\n")
+          .trim();
+      }
+    });
+    try {
+      await summarizer.prompt(
+        "Compress this conversation history:\n\n<transcript>\n" +
+          transcript +
+          "\n</transcript>",
+      );
+    } catch (err) {
+      console.error("[Runtime] summarizer failed:", err);
+      this.update({
+        error: `Сжатие не удалось: ${err instanceof Error ? err.message : "error"}`,
+      });
+      return false;
+    }
+
+    if (!summary) {
+      this.update({ error: "Сжатие не удалось: пустая сводка" });
+      return false;
+    }
+
+    const summaryMessage = {
+      role: "user",
+      content:
+        `<context_summary>\n${summary}\n</context_summary>\n\n` +
+        "(Compact summary of the earlier conversation; recent messages follow.)",
+      timestamp: Date.now(),
+    } as AgentMessage;
+
+    agent.state.messages = [summaryMessage, ...kept];
+    this.update({
+      messages: agentMessagesToChatMessages(
+        agent.state.messages,
+        this.adapter.metadataTag,
+      ),
+      error: null,
+    });
+
+    if (this.currentSessionId) {
+      try {
+        await saveSession(this.ns, this.currentSessionId, agent.state.messages);
+        await this.refreshSessions();
+      } catch (e) {
+        console.error("[Runtime] saving compacted session failed:", e);
+      }
+    }
+    return true;
   }
 
   clearMessages() {

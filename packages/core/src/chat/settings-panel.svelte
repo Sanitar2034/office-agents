@@ -53,6 +53,8 @@
   let apiType = $state(saved?.apiType || "openai-completions");
   let customBaseUrl = $state(saved?.customBaseUrl || "");
   let authMethod = $state<"apikey" | "oauth">(saved?.authMethod || "apikey");
+  let contextLimit = $state<number>(saved?.contextLimit ?? 0);
+  let autoCompact = $state(saved?.autoCompact !== false);
 
   const savedWeb = loadWebConfig(ns);
   let webSearchProvider = $state(savedWeb.searchProvider);
@@ -109,6 +111,8 @@
       apiType: string;
       customBaseUrl: string;
       authMethod: "apikey" | "oauth";
+      contextLimit: number;
+      autoCompact: boolean;
     }>,
   ) {
     const nextProvider = updates.provider ?? provider;
@@ -120,6 +124,10 @@
     const nextApiType = updates.apiType ?? apiType;
     const nextCustomBaseUrl = updates.customBaseUrl ?? customBaseUrl;
     const nextAuthMethod = updates.authMethod ?? authMethod;
+    const nextContextLimit = Number.isFinite(updates.contextLimit ?? contextLimit)
+      ? Math.max(0, Math.floor(updates.contextLimit ?? contextLimit))
+      : 0;
+    const nextAutoCompact = updates.autoCompact ?? autoCompact;
 
     provider = nextProvider;
     apiKey = nextApiKey;
@@ -130,6 +138,8 @@
     apiType = nextApiType;
     customBaseUrl = nextCustomBaseUrl;
     authMethod = nextAuthMethod;
+    contextLimit = nextContextLimit;
+    autoCompact = nextAutoCompact;
 
     const isValid =
       nextProvider === "custom"
@@ -153,6 +163,8 @@
       thinking: nextThinking,
       followMode,
       expandToolCalls,
+      contextLimit: nextContextLimit,
+      autoCompact: nextAutoCompact,
       apiType: nextApiType,
       customBaseUrl: nextCustomBaseUrl,
       authMethod: nextAuthMethod,
@@ -639,6 +651,42 @@
         <p class="text-[10px] text-(--chat-text-muted) mt-1">
           Extended thinking for supported models
         </p>
+      </div>
+
+      <div>
+        <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+          Context Limit (tokens)
+        </span>
+        <input
+          type="number"
+          min="0"
+          step="1000"
+          bind:value={contextLimit}
+          oninput={() => updateAndSync({ contextLimit })}
+          placeholder="0 = model default"
+          class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
+          style={inputStyle}
+        />
+        <p class="text-[10px] text-(--chat-text-muted) mt-1">
+          0 — model default. Set the real window for local models; /compact in chat
+          compresses history manually.
+        </p>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs text-(--chat-text-secondary)">
+            Auto-compact Context
+          </span>
+          <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
+            Summarize older messages when nearing the limit
+          </p>
+        </div>
+        {@render toggleSwitch(
+          autoCompact,
+          () => updateAndSync({ autoCompact: !autoCompact }),
+          autoCompact ? "Disable auto-compact" : "Enable auto-compact",
+        )}
       </div>
 
       <div class="flex items-center justify-between">

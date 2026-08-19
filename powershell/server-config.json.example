@@ -1,4 +1,0 @@
-{
-    "_comment": "Куда проксировать /llm-proxy/* (OpenAI-совместимый LLM-сервер). Примеры: http://192.168.1.50:11434 (Ollama), http://192.168.1.50:1234 (LM Studio), http://192.168.1.50:8080 (llama.cpp server). Скопируйте этот файл в server-config.json и поправьте адрес.",
-    "llmProxyTarget": "http://192.168.1.50:11434"
-}
