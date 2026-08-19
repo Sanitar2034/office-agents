@@ -88,6 +88,11 @@ HTTP-бэкендов, CORS не нужен. Адрес бэкенда наст�
   что-то не скопировалось.
 - Запрос к `telemetryservice.firstpartyapps.oaspapps.com` не резолвится — это
   телеметрия Office.js, на работу не влияет.
+- «Failed to fetch dynamically imported module …/assets/*.js» — таскпан в Office
+  остался от старой сборки, а `site/` уже обновили (хэши файлов меняются при каждой
+  пересборке). Перезагрузите аддин: закройте и снова откройте панель, либо
+  перезапустите приложение Office. В консоли сервера это видно как
+  `[404 STALE ASSET - reload the add-in!]`.
 - Требуется Office 2021+/Microsoft 365 (WebView2).
 
 Подробности: `powershell/README.md` в репозитории форка.

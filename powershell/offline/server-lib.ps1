@@ -263,6 +263,12 @@ function Handle-OaConnection {
                 $full = Join-Path $full 'index.html'
             }
             if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+                if ($path -like '/assets/*' -and ($path -like '*.js' -or $path -like '*.css')) {
+                    # stale bundle: the taskpane was loaded from an older build
+                    # and its hashed chunk names no longer exist after a redeploy
+                    Send-OaError -Ssl $ssl -Code 404 -Status 'Not Found' -Message 'asset not found: the site bundle was rebuilt. Reload the add-in - close and reopen the taskpane (or restart the Office app).' -HeadOnly $headOnly
+                    return "$method $rawUrl [404 STALE ASSET - reload the add-in!]"
+                }
                 Send-OaError -Ssl $ssl -Code 404 -Status 'Not Found' -Message "not found: $path" -HeadOnly $headOnly
                 return "$method $rawUrl [404]"
             }
