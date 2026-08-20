@@ -523,10 +523,11 @@ export class AgentRuntime {
       streamFn: async (model, context, options) => {
         const cfg = this.config ?? config;
         const apiKey = await this.getActiveApiKey(cfg);
-        return streamSimple(model, context, {
-          ...options,
-          apiKey,
-        });
+        const streamOptions: Record<string, unknown> = { ...options, apiKey };
+        if (typeof cfg.temperature === "number") {
+          streamOptions.temperature = cfg.temperature;
+        }
+        return streamSimple(model, context, streamOptions);
       },
     });
     this.agent = agent;

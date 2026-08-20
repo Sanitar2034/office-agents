@@ -55,6 +55,44 @@
   let authMethod = $state<"apikey" | "oauth">(saved?.authMethod || "apikey");
   let contextLimit = $state<number>(saved?.contextLimit ?? 0);
   let autoCompact = $state(saved?.autoCompact !== false);
+  let temperature = $state<string>(
+    typeof saved?.temperature === "number" ? String(saved.temperature) : "",
+  );
+
+  // model list loading for custom endpoints (incl. Open WebUI preset)
+  let availableModels = $state<string[]>([]);
+  let modelsBusy = $state(false);
+  let modelsError = $state("");
+
+  async function loadEndpointModels(): Promise<void> {
+    const base = customBaseUrl.trim().replace(/\/+$/, "");
+    if (!base) {
+      modelsError = "Enter the Base URL first";
+      return;
+    }
+    modelsBusy = true;
+    modelsError = "";
+    try {
+      const headers: Record<string, string> = {};
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      const res = await fetch(`${base}/models`, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        data?: { id?: string; name?: string }[];
+        models?: { id?: string; name?: string }[];
+      };
+      const ids = (data.data ?? data.models ?? [])
+        .map((m) => m.id || m.name || "")
+        .filter(Boolean);
+      if (ids.length === 0) throw new Error("no models in response");
+      availableModels = ids;
+    } catch (err) {
+      modelsError = err instanceof Error ? err.message : "request failed";
+      availableModels = [];
+    } finally {
+      modelsBusy = false;
+    }
+  }
 
   // LLM connection: direct https endpoint vs the offline PowerShell server's
   // same-origin /llm-proxy (backend address managed via /oa-config/llm-target).
@@ -178,6 +216,7 @@
       authMethod: "apikey" | "oauth";
       contextLimit: number;
       autoCompact: boolean;
+      temperature: number | string | undefined;
     }>,
   ) {
     const nextProvider = updates.provider ?? provider;
@@ -193,6 +232,15 @@
       ? Math.max(0, Math.floor(updates.contextLimit ?? contextLimit))
       : 0;
     const nextAutoCompact = updates.autoCompact ?? autoCompact;
+    const parsedTemperature = Number.parseFloat(
+      String(updates.temperature ?? temperature).trim(),
+    );
+    const nextTemperature =
+      Number.isFinite(parsedTemperature) &&
+      parsedTemperature >= 0 &&
+      parsedTemperature <= 2
+        ? parsedTemperature
+        : undefined;
 
     provider = nextProvider;
     apiKey = nextApiKey;
@@ -205,6 +253,14 @@
     authMethod = nextAuthMethod;
     contextLimit = nextContextLimit;
     autoCompact = nextAutoCompact;
+    if (updates.temperature !== undefined) {
+      // keep the raw string while typing (empty or partially numeric);
+      // the saved config stays undefined until the value fully parses
+      const s = String(updates.temperature).trim();
+      if (s === "" || Number.isFinite(Number.parseFloat(s))) {
+        temperature = String(updates.temperature);
+      }
+    }
 
     const isValid =
       nextProvider === "custom"
@@ -230,6 +286,7 @@
       expandToolCalls,
       contextLimit: nextContextLimit,
       autoCompact: nextAutoCompact,
+      ...(nextTemperature !== undefined ? { temperature: nextTemperature } : {}),
       apiType: nextApiType,
       customBaseUrl: nextCustomBaseUrl,
       authMethod: nextAuthMethod,
@@ -270,6 +327,17 @@
   }
 
   function handleProviderChange(newProvider: string) {
+    if (newProvider === "openwebui") {
+      // preset: Open WebUI speaks the OpenAI protocol at <url>/api with a webui API key
+      updateAndSync({
+        provider: "custom",
+        model: "",
+        authMethod: "apikey",
+        apiType: "openai-completions",
+        customBaseUrl: "https://localhost:8443/api",
+      });
+      return;
+    }
     if (newProvider === "custom") {
       updateAndSync({ provider: newProvider, model: "", authMethod: "apikey" });
     } else {
@@ -439,6 +507,7 @@
             <option value={availableProvider}>{availableProvider}</option>
           {/each}
           <option disabled>──────────</option>
+          <option value="openwebui">Open WebUI (local)</option>
           <option value="custom">Custom Endpoint</option>
         </select>
       </label>
@@ -595,14 +664,40 @@
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
             Model ID
           </span>
-          <input
-            type="text"
-            bind:value={model}
-            oninput={() => updateAndSync({ model })}
-            placeholder="gpt-4o"
-            class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
-            style={inputStyle}
-          />
+          <div class="flex gap-1">
+            <input
+              type="text"
+              list="endpoint-models"
+              bind:value={model}
+              oninput={() => updateAndSync({ model })}
+              placeholder="model id (or Load models)"
+              class="flex-1 min-w-0 bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
+              style={inputStyle}
+            />
+            <button
+              type="button"
+              onclick={loadEndpointModels}
+              disabled={modelsBusy}
+              class="px-3 py-2 text-xs border border-(--chat-border) text-(--chat-text-secondary) hover:border-(--chat-border-active) disabled:opacity-50 whitespace-nowrap"
+              style="border-radius: var(--chat-radius)"
+            >
+              {modelsBusy ? "…" : "Load models"}
+            </button>
+          </div>
+          <datalist id="endpoint-models">
+            {#each availableModels as m (m)}
+              <option value={m}></option>
+            {/each}
+          </datalist>
+          {#if modelsError}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              Cannot load models: {modelsError}. Check Base URL / API key.
+            </p>
+          {:else if availableModels.length > 0}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              {availableModels.length} models loaded — pick from the dropdown in the field
+            </p>
+          {/if}
         </label>
       {/if}
 
@@ -804,6 +899,26 @@
           </p>
         </label>
       {/if}
+
+      <div>
+        <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+          Temperature
+        </span>
+        <input
+          type="number"
+          min="0"
+          max="2"
+          step="0.1"
+          bind:value={temperature}
+          oninput={() => updateAndSync({ temperature })}
+          placeholder="provider default"
+          class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
+          style={inputStyle}
+        />
+        <p class="text-[10px] text-(--chat-text-muted) mt-1">
+          Empty — provider default. 0.1–0.3 recommended for tool calling
+        </p>
+      </div>
 
       <div>
         <span class="block text-xs text-(--chat-text-secondary) mb-1.5">

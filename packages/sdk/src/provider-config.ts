@@ -17,6 +17,8 @@ export interface ProviderConfig {
   contextLimit: number;
   /** Summarize older messages when the context nears the limit. */
   autoCompact: boolean;
+  /** Sampling temperature; undefined = provider default. */
+  temperature?: number;
   apiType?: string;
   customBaseUrl?: string;
   authMethod?: "apikey" | "oauth";
@@ -81,6 +83,10 @@ export function loadSavedConfig(ns: StorageNamespace): ProviderConfig | null {
       if (config.authMethod === undefined) config.authMethod = "apikey";
       if (config.contextLimit === undefined) config.contextLimit = 0;
       if (config.autoCompact === undefined) config.autoCompact = true;
+      if (config.temperature !== undefined &&
+          (typeof config.temperature !== "number" || Number.isNaN(config.temperature))) {
+        config.temperature = undefined;
+      }
       if (config.authMethod === "oauth") {
         const creds = loadOAuthCredentials(ns, config.provider);
         if (creds) config.apiKey = creds.access;
