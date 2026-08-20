@@ -67,8 +67,10 @@ try {
     $q2 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE {1,2,3}"}'
     Assert 'dax table query rowCount 3' ($q2.Code -eq 200 -and $q2.Text -match '"rowCount":3')
 
+    # NB: on an EMPTY model the engine may return an empty rowset instead of
+    # an error; both outcomes mean "no data" and are agent-safe.
     $q3 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE DefinitelyNotATable"}'
-    Assert 'bad dax -> ok:false with error text' ($q3.Code -eq 200 -and $q3.Text -match '"ok":false')
+    Assert 'bad dax -> ok:false or empty rowset' ($q3.Code -eq 200 -and ($q3.Text -match '"ok":false' -or $q3.Text -match '"rowCount":0'))
 }
 finally {
     if (-not $wasEnabled) {

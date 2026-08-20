@@ -379,19 +379,75 @@ function Find-OaPbiPort {
         $ports = Get-ChildItem -LiteralPath $wsDir -Filter 'msmdsrv.port.txt' -Recurse -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending
         if ($ports.Count -gt 0) {
-            $txt = (Get-Content -LiteralPath $ports[0].FullName -Raw).Trim()
+            # msmdsrv.port.txt is UTF-16 (digits interleaved with NULs when read
+            # as text) - strip everything that is not a digit, then parse
+            $txt = Get-Content -LiteralPath $ports[0].FullName -Raw
+            $digits = ($txt -replace '\D', '')
             $p = 0
-            if ([int]::TryParse($txt, [ref]$p)) { return $p }
+            if ($digits -and [int]::TryParse($digits, [ref]$p)) { return $p }
         }
     } catch { }
     return $null
 }
 
-function Invoke-OaPbiDax {
-    # DAX via MSOLAP OleDb against the local AS engine of a running PBI Desktop
+function ConvertFrom-OaXmlaColumn {
+    # decode XMLA-encoded column names: _x005B_Value_x005D_ -> [Value]
+    param([string]$Name)
+    $out = ''
+    for ($i = 0; $i -lt $Name.Length; $i++) {
+        if ($Name[$i] -eq '_' -and $i + 7 -le $Name.Length -and $Name.Substring($i, 3) -eq '_x0') {
+            $hex = $Name.Substring($i + 3, 4)
+            $code = 0
+            if ([int]::TryParse($hex, [System.Globalization.NumberStyles]::HexNumber, $null, [ref]$code)) {
+                $out += [char]$code
+                $i += 7
+                continue
+            }
+        }
+        $out += $Name[$i]
+    }
+    return $out
+}
+
+function Invoke-OaPbiDaxAsCmd {
+    # Fallback path: ADOMD via the (user-scope) SqlServer module - works even
+    # when the MSOLAP OleDb provider is not registered (no admin needed).
     param([int]$Port, [string]$Query)
-    $conn = New-Object System.Data.OleDb.OleDbConnection("Provider=MSOLAP;Data Source=localhost:$Port")
+    if (-not (Get-Command Invoke-ASCmd -ErrorAction SilentlyContinue)) {
+        Import-Module SqlServer -ErrorAction Stop
+    }
+    $result = Invoke-ASCmd -Server "localhost:$Port" -Query $Query
+    $xmlText = if ($result -is [array]) { $result -join '' } else { [string]$result }
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.LoadXml($xmlText)
+    $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+    $ns.AddNamespace('xsd', 'http://www.w3.org/2001/XMLSchema')
+    $ns.AddNamespace('sql', 'urn:schemas-microsoft-com:xml-sql')
+    $ns.AddNamespace('rs', 'urn:schemas-microsoft-com:xml-analysis:rowset')
+    $cols = @()
+    foreach ($el in $doc.SelectNodes('//xsd:element[@sql:field]', $ns)) {
+        $cols += ConvertFrom-OaXmlaColumn $el.GetAttribute('field', 'urn:schemas-microsoft-com:xml-sql')
+    }
+    $rows = @()
+    foreach ($row in $doc.SelectNodes('//rs:row', $ns)) {
+        $r = @()
+        foreach ($c in $row.ChildNodes) { $r += $c.InnerText }
+        $rows += ,$r
+    }
+    return @{ ok = $true; columns = $cols; rows = $rows; rowCount = $rows.Count }
+}
+
+function Invoke-OaPbiDax {
+    # DAX against the local AS engine of a running PBI Desktop:
+    # 1) MSOLAP OleDb (fast, zero deps) when the provider is registered
+    # 2) ADOMD via the user-scope SqlServer module as fallback
+    # The fallback is OUTSIDE the try/finally: an exception inside finally
+    # (e.g. Dispose on a null connection in MA runspaces) must not mask it.
+    param([int]$Port, [string]$Query)
+    $olResult = $null
+    $conn = $null
     try {
+        $conn = New-Object System.Data.OleDb.OleDbConnection("Provider=MSOLAP;Data Source=localhost:$Port")
         $conn.Open()
         $cmd = $conn.CreateCommand()
         $cmd.CommandText = $Query
@@ -409,11 +465,16 @@ function Invoke-OaPbiDax {
             $rows += ,$row
         }
         $reader.Close()
-        return @{ ok = $true; columns = $cols; rows = $rows; rowCount = $rows.Count }
+        $olResult = @{ ok = $true; columns = $cols; rows = $rows; rowCount = $rows.Count }
+    }
+    catch {
+        $olResult = $null   # MSOLAP not registered / connection refused -> fallback
     }
     finally {
-        $conn.Dispose()
+        if ($conn) { try { $conn.Dispose() } catch { } }
     }
+    if ($olResult) { return $olResult }
+    return Invoke-OaPbiDaxAsCmd -Port $Port -Query $Query
 }
 
 function Handle-OaPbi {
@@ -465,10 +526,14 @@ function Handle-OaPbi {
         return "POST /oa-pbi/dax [200 rows=$($result.rowCount)]"
     }
     catch {
-        $json = '{"ok":false,"error":' + ($_.Exception.Message | ConvertTo-Json) + '}'
+        $detail = $_.Exception.Message
+        if ($_.InvocationInfo -and $_.InvocationInfo.ScriptLineNumber) {
+            $detail = $detail + ' @line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.InvocationInfo.Line.Trim()
+        }
+        $json = '{"ok":false,"error":' + ($detail | ConvertTo-Json) + '}'
         $bytes = [Text.Encoding]::UTF8.GetBytes($json)
         Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
-        return "POST /oa-pbi/dax [ok:false $($_.Exception.Message)]"
+        return "POST /oa-pbi/dax [ok:false $detail]"
     }
 }
 
