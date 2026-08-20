@@ -145,3 +145,18 @@ lives in a separate JS/WASM stack next to the future Pyodide worker:
 - [ ] tesseract.js as a light fallback (rus traineddata vendored), toggle in
       settings; PaddleOCR is the default (better Cyrillic accuracy, ~96%)
 - [ ] System prompt section describing the OCR environment to the model
+
+### Agent undo journal (chosen: way 1 only; way 2/worksheet.copy rejected)
+Within ExcelApi 1.17 (works on LTSC 2024 / Office 2021 / web). No native Ctrl+Z
+for JS ops before ExcelApi 1.20 — build our own rollback of agent edits:
+- [ ] set_cell_range already pre-reads values+formulas for overwrite protection:
+      extend the pre-read with cell formats and store the snapshot as an inverse
+      operation in a per-session undo journal (sheet, range, values, formulas, formats)
+- [ ] Journal structural ops (insert/delete rows/cols, sheet ops) as inverse operations;
+      object creations (charts/pivots via modify_object) rolled back by delete
+- [ ] UI: "Undo agent edits" button in the taskpane + `/undo` chat command
+      (per last turn and per whole session); journal persisted with the session
+- [ ] Optional on M365 hosts: ExcelApi 1.20 isSetSupported guard for native undo
+      grouping so Ctrl+Z undoes an agent step as one entry
+- [x] Multi-chats & history: already implemented upstream (sessions dropdown,
+      per-document IndexedDB persistence) — no work needed
