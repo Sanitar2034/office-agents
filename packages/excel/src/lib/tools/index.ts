@@ -34,6 +34,7 @@ import { modifyWorkbookStructureTool } from "./modify-workbook-structure";
 import { resizeRangeTool } from "./resize-range";
 import { screenshotRangeTool } from "./screenshot-range";
 import { undoEditsTool } from "./undo-edits";
+import { createComBridgeTool } from "./com-bridge";
 import { initUndoJournal } from "../excel/undo-journal";
 import { searchDataTool } from "./search-data";
 import { setCellRangeTool } from "./set-cell-range";
@@ -60,5 +61,6 @@ export function createExcelTools(ctx: AgentContext) {
     modifyObjectTool,
     createEvalOfficeJsTool(ctx),
     undoEditsTool,
+    createComBridgeTool(),
   ];
 }

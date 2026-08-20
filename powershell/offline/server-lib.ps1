@@ -144,15 +144,70 @@ function Invoke-OaProxy {
 }
 
 function Set-OaServerConfig {
-    param([string]$ConfigFile, [string]$Target)
-    $json = '{"llmProxyTarget":' + ($Target | ConvertTo-Json) + '}'
-    Set-Content -LiteralPath $ConfigFile -Value $json -Encoding UTF8
+    # merge a single key into server-config.json (read-modify-write)
+    param([string]$ConfigFile, [string]$Key, [object]$Value)
+    $cfg = @{}
+    try {
+        if (Test-Path -LiteralPath $ConfigFile) {
+            $cfg = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $cfg = @{} + $cfg
+        }
+    } catch { $cfg = @{} }
+    $cfg[$Key] = $Value
+    Set-Content -LiteralPath $ConfigFile -Value ($cfg | ConvertTo-Json -Compress) -Encoding UTF8
 }
 
 function Handle-OaConfig {
-    # GET/POST /oa-config/llm-target - lets the add-in read and change the
-    # LLM backend address live (persisted to server-config.json).
+    # /oa-config/llm-target and /oa-config/com-bridge: live, persisted settings
+    # changed from the add-in (same-origin only for mutations).
     param($Ssl, $Req, $Sync, [bool]$HeadOnly)
+    $path = ([string]$Req.RawUrl -split '\?')[0].TrimEnd('/')
+
+    if ($path -eq '/oa-config/com-bridge') {
+        if ($Req.Method -eq 'GET' -or $Req.Method -eq 'HEAD') {
+            $json = '{"enabled":' + ($Sync.ComBridge -eq $true | ConvertTo-Json).ToLower() + '}'
+            # ConvertTo-Json on bool gives true/false already; build safely:
+            $json = '{"enabled":' + ($(if ($Sync.ComBridge -eq $true) { 'true' } else { 'false' })) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "GET /oa-config/com-bridge [200]"
+        }
+        if ($Req.Method -eq 'POST') {
+            $origin = [string]$Req.Headers['origin']
+            if (-not $origin -or -not $origin.StartsWith('https://localhost:')) {
+                Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
+                return "POST /oa-config/com-bridge [403 bad origin]"
+            }
+            $enabled = $false
+            try {
+                $bodyText = ''
+                if ($Req.Body) { $bodyText = [Text.Encoding]::UTF8.GetString($Req.Body) }
+                $enabled = [bool](($bodyText | ConvertFrom-Json).enabled)
+            } catch {
+                Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'invalid JSON body' -HeadOnly $HeadOnly
+                return "POST /oa-config/com-bridge [400]"
+            }
+            try {
+                if ($Sync.ConfigFile) { Set-OaServerConfig -ConfigFile $Sync.ConfigFile -Key 'comBridge' -Value $enabled }
+            } catch {
+                Send-OaError -Ssl $Ssl -Code 500 -Status 'Server Error' -Message "cannot write config: $($_.Exception.Message)" -HeadOnly $HeadOnly
+                return "POST /oa-config/com-bridge [500]"
+            }
+            $Sync.ComBridge = $enabled
+            $json = '{"ok":true,"enabled":' + ($(if ($enabled) { 'true' } else { 'false' })) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-config/com-bridge [200 enabled=$enabled]"
+        }
+        Send-OaError -Ssl $Ssl -Code 405 -Status 'Method Not Allowed' -Message 'GET or POST only' -HeadOnly $HeadOnly
+        return "$($Req.Method) /oa-config/com-bridge [405]"
+    }
+
+    if ($path -ne '/oa-config/llm-target') {
+        Send-OaError -Ssl $Ssl -Code 404 -Status 'Not Found' -Message "unknown config path: $path" -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [404]"
+    }
+
     if ($Req.Method -eq 'GET' -or $Req.Method -eq 'HEAD') {
         $json = '{"llmProxyTarget":' + ([string]$Sync.LlmTarget | ConvertTo-Json) + '}'
         $bytes = [Text.Encoding]::UTF8.GetBytes($json)
@@ -186,7 +241,7 @@ function Handle-OaConfig {
             return "POST /oa-config/llm-target [400]"
         }
         try {
-            if ($Sync.ConfigFile) { Set-OaServerConfig -ConfigFile $Sync.ConfigFile -Target $target }
+            if ($Sync.ConfigFile) { Set-OaServerConfig -ConfigFile $Sync.ConfigFile -Key 'llmProxyTarget' -Value $target }
         } catch {
             Send-OaError -Ssl $Ssl -Code 500 -Status 'Server Error' -Message "cannot write config: $($_.Exception.Message)" -HeadOnly $HeadOnly
             return "POST /oa-config/llm-target [500]"
@@ -199,6 +254,122 @@ function Handle-OaConfig {
     }
     Send-OaError -Ssl $Ssl -Code 405 -Status 'Method Not Allowed' -Message 'GET or POST only' -HeadOnly $HeadOnly
     return "$($Req.Method) /oa-config/llm-target [405]"
+}
+
+function Get-OaExcelApp {
+    # attach to the RUNNING Excel in the interactive session (no new instance)
+    try {
+        return [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application')
+    } catch { return $null }
+}
+
+function Read-OaJsonBody {
+    param($Req)
+    try {
+        $bodyText = ''
+        if ($Req.Body) { $bodyText = [Text.Encoding]::UTF8.GetString($Req.Body) }
+        return ($bodyText | ConvertFrom-Json)
+    } catch { return $null }
+}
+
+function Handle-OaCom {
+    # Opt-in desktop power tools via COM on the live Excel (xlwings pattern).
+    # Gated by the com-bridge toggle (server-config.json / oa-config endpoint).
+    param($Ssl, $Req, $Sync, [bool]$HeadOnly)
+    $path = ([string]$Req.RawUrl -split '\?')[0].TrimEnd('/')
+    $originOk = ([string]$Req.Headers['origin']).StartsWith('https://localhost:')
+
+    if ($Sync.ComBridge -ne $true -and $path -ne '/oa-com/status') {
+        Send-OaError -Ssl $Ssl -Code 503 -Status 'Service Disabled' -Message 'COM bridge is disabled (Settings -> Desktop power tools)' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [503 disabled]"
+    }
+
+    if ($path -eq '/oa-com/status') {
+        $excel = Get-OaExcelApp
+        $wb = $null
+        if ($excel) { try { $wb = [string]$excel.ActiveWorkbook.Name } catch { $wb = $null } }
+        $running = 'false'; $wbs = 'null'
+        if ($excel) { $running = 'true'; if ($wb) { $wbs = ConvertTo-Json $wb } }
+        $json = '{"enabled":' + ($(if ($Sync.ComBridge -eq $true) { 'true' } else { 'false' })) +
+            ',"excelRunning":' + $running + ',"workbook":' + $wbs + '}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "GET /oa-com/status [200]"
+    }
+
+    if (-not $originOk) {
+        Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [403 bad origin]"
+    }
+
+    $excel = Get-OaExcelApp
+    if (-not $excel) {
+        Send-OaError -Ssl $Ssl -Code 409 -Status 'Conflict' -Message 'Excel is not running (open the workbook first)' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [409 no excel]"
+    }
+
+    try {
+        if ($path -eq '/oa-com/run-macro') {
+            $body = Read-OaJsonBody $Req
+            if (-not $body -or -not $body.macro) { throw 'body must be {"macro":"name"[,"args":[...]]}' }
+            $result = if ($body.args) { $excel.Run([string]$body.macro, @($body.args)) } else { $excel.Run([string]$body.macro) }
+            $json = '{"ok":true,"macro":' + ([string]$body.macro | ConvertTo-Json) + ',"result":' + ($(if ($null -ne $result) { $result | ConvertTo-Json -Compress } else { 'null' })) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-com/run-macro [200 $($body.macro)]"
+        }
+
+        if ($path -eq '/oa-com/pq-list') {
+            $wb = $excel.ActiveWorkbook
+            $items = @()
+            foreach ($q in $wb.Queries) {
+                $items += @{ name = [string]$q.name; formula = ([string]$q.formula) }
+            }
+            $json = @{ ok = $true; count = $items.Count; queries = $items } | ConvertTo-Json -Depth 4 -Compress
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-com/pq-list [200 x$($items.Count)]"
+        }
+
+        if ($path -eq '/oa-com/pq-refresh-all') {
+            $wb = $excel.ActiveWorkbook
+            $excel.ScreenUpdating = $false
+            $wb.RefreshAll()
+            for ($i = 0; $i -lt 120; $i++) {
+                Start-Sleep -Milliseconds 500
+                if ($excel.Ready) { break }
+            }
+            $excel.ScreenUpdating = $true
+            $json = '{"ok":true,"workbook":' + ([string]$wb.Name | ConvertTo-Json) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-com/pq-refresh-all [200]"
+        }
+
+        if ($path -eq '/oa-com/pq-edit') {
+            $body = Read-OaJsonBody $Req
+            if (-not $body -or -not $body.name -or -not $body.formula) { throw 'body must be {"name":"q","formula":"let ..."}' }
+            $wb = $excel.ActiveWorkbook
+            $existing = $null
+            foreach ($q in $wb.Queries) { if ($q.name -eq [string]$body.name) { $existing = $q; break } }
+            if ($existing) { $existing.formula = [string]$body.formula }
+            else { $null = $wb.Queries.Add([string]$body.name, [string]$body.formula) }
+            $json = '{"ok":true,"name":' + ([string]$body.name | ConvertTo-Json) + ',"action":"' + ($(if ($existing) { 'updated' } else { 'created' })) + '"}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-com/pq-edit [200 $($body.name)]"
+        }
+
+        Send-OaError -Ssl $Ssl -Code 404 -Status 'Not Found' -Message "unknown com path: $path" -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [404]"
+    }
+    catch {
+        # agent-friendly contract: COM failures come back as JSON ok:false
+        $json = '{"ok":false,"error":' + ($_.Exception.Message | ConvertTo-Json) + '}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [ok:false $($_.Exception.Message)]"
+    }
 }
 
 function Handle-OaConnection {
@@ -234,6 +405,10 @@ function Handle-OaConnection {
 
             if ($rawUrl.StartsWith('/oa-config/')) {
                 return (Handle-OaConfig -Ssl $ssl -Req $req -Sync $Sync -HeadOnly $headOnly)
+            }
+
+            if ($rawUrl.StartsWith('/oa-com/')) {
+                return (Handle-OaCom -Ssl $ssl -Req $req -Sync $Sync -HeadOnly $headOnly)
             }
 
             if ($rawUrl.StartsWith('/llm-proxy') -and $LlmTarget) {

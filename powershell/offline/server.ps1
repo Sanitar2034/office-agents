@@ -99,8 +99,16 @@ $pool = [RunspaceFactory]::CreateRunspacePool(1, 8)
 $pool.Open()
 
 # shared live state, visible to all runspaces (updated by /oa-config/llm-target)
+$comBridge = $false
+if (Test-Path $configFile) {
+    try {
+        $savedCfg = Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($savedCfg.comBridge -eq $true) { $comBridge = $true }
+    } catch { }
+}
 $sync = [hashtable]::Synchronized(@{
     LlmTarget = $LlmProxyTarget
+    ComBridge = $comBridge
     ConfigFile = $configFile
 })
 

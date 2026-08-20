@@ -68,6 +68,11 @@ if (-not $cert) { Write-Host "No certificate: run install.ps1 first" -Foreground
 $busy = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
 if ($busy) { Write-Host "Port 3000 busy - stop other server instances first" -ForegroundColor Red; exit 1 }
 
+# backup server-config.json: com-bridge tests mutate it
+$cfgFile = Join-Path $root 'server-config.json'
+$cfgBackup = $null
+if (Test-Path $cfgFile) { $cfgBackup = Get-Content $cfgFile -Raw }
+
 # 1) mock LLM on 8899
 $mock = Start-Process node -ArgumentList "`"$PSScriptRoot\mock-llm.js`"" -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 2
@@ -112,8 +117,28 @@ try {
     # path traversal
     $trav = Http 'GET' 'https://127.0.0.1:3000/..%2f..%2f..%2fwindows/win.ini'
     Assert 'path traversal = 403' ($trav.Code -eq 403)
+
+    # --- COM bridge (opt-in desktop power tools) ---
+    $st = Http 'GET' 'https://127.0.0.1:3000/oa-com/status'
+    Assert 'com status: disabled by default' ($st.Code -eq 200 -and $st.Text -match '"enabled":false' -and $st.Text -match 'excelRunning')
+    Assert 'com run-macro: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/run-macro' '{"macro":"x"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+
+    $en = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'com-bridge enable: 200 + persisted' ($en.Code -eq 200 -and (Get-Content $cfgFile -Raw) -match '"comBridge":\s*true')
+
+    $st2 = Http 'GET' 'https://127.0.0.1:3000/oa-com/status'
+    Assert 'com status: enabled after toggle' ($st2.Code -eq 200 -and $st2.Text -match '"enabled":true')
+
+    Assert 'com run-macro: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/run-macro' '{"macro":"x"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    $rm = Http 'POST' 'https://127.0.0.1:3000/oa-com/run-macro' '{"macro":"No.Such.Macro"}' @{ Origin = 'https://localhost:3000' }
+    Assert 'com run-macro: executes via COM (ok or excel error, not 5xx server)' ($rm.Code -eq 200 -and ($rm.Text -match '"ok":true' -or $rm.Text -match '"ok":false'))
+
+    $dis = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
+    Assert 'com-bridge disable: 200' ($dis.Code -eq 200)
 }
 finally {
+    if ($null -ne $cfgBackup) { Set-Content -LiteralPath $cfgFile -Value $cfgBackup -NoNewline -Encoding UTF8 }
+    elseif (Test-Path $cfgFile) { Remove-Item $cfgFile -Force }
     Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
     Stop-Process -Id $mock.Id -Force -ErrorAction SilentlyContinue
     # server spawns in a child powershell - kill anything still holding our ports

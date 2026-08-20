@@ -73,6 +73,11 @@ EXCEL WRITE:
 - undo_edits: Roll back your recent write operations (restores previous
   values, formulas, number formats). Use it when the user asks to undo/revert
   your edits (the /undo chat command maps here).
+- com_bridge: OPTIONAL desktop power via COM on the running Excel —
+  run_macro, pq_list / pq_edit / pq_refresh_all (Power Query M code),
+  status. Only works when the user enabled 'Desktop power tools' in
+  Settings and Excel is open; otherwise answers 'disabled'. Never assume
+  it is available — check with action=status first.
 
 eval_officejs has access to readFile(path) → Promise<string>, readFileBuffer(path) → Promise<Uint8Array>, and writeFile(path, content) → Promise<void> (content: string | Uint8Array) for VFS files.
 

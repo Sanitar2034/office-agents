@@ -42,10 +42,13 @@ foreach ($app in 'excel', 'powerpoint', 'word') {
     }
 }
 
-# 3) excel-specific: undo tool + value normalization
+# 3) excel-specific: undo tool + COM bridge + value normalization
 $xlAssets = Join-Path $site 'excel\assets'
 Assert "excel bundle contains 'undo_edits'" (
     (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'undo_edits' -List -Quiet)
+)
+Assert "excel bundle contains 'com_bridge'" (
+    (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'com_bridge' -List -Quiet)
 )
 
 # 4) no sourcemaps shipped
