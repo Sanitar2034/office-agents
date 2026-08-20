@@ -179,3 +179,17 @@ Constraints: interactive user session only; MOTW blocks macros
 (Unblock-File / Trusted Locations — document!); EXCEL.EXE hygiene; Power BI
 stays cloud-only (REST executeQueries / XMLA via PS if ever online — not part
 of the offline core)
+
+### Offline Power BI Desktop integration (user has Desktop offline; opt-in layer, like COM bridge)
+Research 2026-08-20. Three local channels, all wired through the offline PS server:
+- [ ] /oa-pbi/dax — discover msmdsrv port via msmdsrv.port.txt, run DAX via
+      Invoke-ASCmd (SqlServer module) or ADOMD; return rows
+- [ ] /oa-pbi/bridge — Desktop Bridge (named pipe pbi-desktop-bridge-{pid},
+      JSON-RPC): status, report page screenshot (report.snapshot.capture),
+      file.reload for PBIP/PBIR; PS talks to the pipe natively
+- [ ] /oa-pbi/parse — pbixray-style .pbix inspection where feasible offline
+- [ ] Agent tools pbi_query / pbi_screenshot / pbi_reload — registered only
+      when the Settings toggle "Desktop power tools" is on and /oa-pbi/status
+      is healthy (Desktop running, port file found)
+Server scenario (intranet): PBIRS on SQL 2025 (Standard now includes it,
+REST /api/v2.0) — out of scope for the workstation fork.
