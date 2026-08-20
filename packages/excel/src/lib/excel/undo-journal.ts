@@ -18,7 +18,10 @@ export interface UndoEntry {
 
 let storagePrefix: string | null = null;
 let journal: UndoEntry[] = [];
-const MAX_ENTRIES = 200;
+// Hybrid cap: count is a loose bound, the byte budget is the real one.
+// Old entries are dropped first, so undo always covers the most recent work.
+const MAX_ENTRIES = 1000;
+const MAX_TOTAL_BYTES = 2 * 1024 * 1024; // keep localStorage usage safe (~5MB/origin shared)
 
 function storageKey(): string | null {
   return storagePrefix ? `${storagePrefix}-undo-journal` : null;
@@ -48,10 +51,27 @@ function persist(): void {
 
 export function recordUndo(entry: UndoEntry): void {
   journal.push(entry);
-  if (journal.length > MAX_ENTRIES) {
-    journal = journal.slice(-MAX_ENTRIES);
-  }
+  trimToBudget();
   persist();
+}
+
+function journalBytes(): number {
+  let total = 0;
+  for (const e of journal) {
+    total += e.values.length * (e.values[0]?.length ?? 0) * 48; // ~cells estimate
+  }
+  return total;
+}
+
+function trimToBudget(): void {
+  // drop oldest entries until both limits hold; a single huge entry stays
+  // undoable unless it alone busts the byte budget
+  while (
+    journal.length > 1 &&
+    (journal.length > MAX_ENTRIES || journalBytes() > MAX_TOTAL_BYTES)
+  ) {
+    journal.shift();
+  }
 }
 
 export function journalLength(): number {
