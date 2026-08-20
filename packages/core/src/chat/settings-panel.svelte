@@ -1053,6 +1053,7 @@
           )}
         </div>
 
+        {#if webToolsEnabled}
         <label class="block">
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
             Default Search Provider
@@ -1165,6 +1166,7 @@
               {@render apiKeyField("Exa API Key", exaApiKey, (v) => { exaApiKey = v; updateWebSettings({ exaApiKey }); }, "Optional", true)}
             {/if}
           </div>
+        {/if}
         {/if}
       </div>
     </div>

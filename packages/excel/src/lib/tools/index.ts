@@ -33,10 +33,13 @@ import { modifySheetStructureTool } from "./modify-sheet-structure";
 import { modifyWorkbookStructureTool } from "./modify-workbook-structure";
 import { resizeRangeTool } from "./resize-range";
 import { screenshotRangeTool } from "./screenshot-range";
+import { undoEditsTool } from "./undo-edits";
+import { initUndoJournal } from "../excel/undo-journal";
 import { searchDataTool } from "./search-data";
 import { setCellRangeTool } from "./set-cell-range";
 
 export function createExcelTools(ctx: AgentContext) {
+  initUndoJournal(ctx.namespace.localStoragePrefix);
   return [
     // fs tools
     createReadTool(ctx),
@@ -56,5 +59,6 @@ export function createExcelTools(ctx: AgentContext) {
     resizeRangeTool,
     modifyObjectTool,
     createEvalOfficeJsTool(ctx),
+    undoEditsTool,
   ];
 }

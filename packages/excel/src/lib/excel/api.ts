@@ -2,6 +2,7 @@
 
 import { createSearchPageCollector } from "./search-data-pagination";
 import { getStableSheetId, preloadSheetIds } from "./sheet-id-map";
+import { recordUndo } from "./undo-journal";
 
 export interface CellData {
   value: string | number | boolean | null;
@@ -632,7 +633,7 @@ export async function setCellRange(
 
     const messages: string[] = [];
     let range = sheet.getRange(rangeAddr);
-    range.load("rowCount,columnCount,values,formulas,address");
+    range.load("rowCount,columnCount,values,formulas,address,numberFormat");
     await context.sync();
 
     const inputRows = cells.length;
@@ -646,7 +647,7 @@ export async function setCellRange(
         `Adjusted range from ${rangeAddr} to ${newAddr} (row diff: ${inputRows - range.rowCount}, col diff: ${inputCols - range.columnCount})`,
       );
       range = sheet.getRange(newAddr);
-      range.load("rowCount,columnCount,values,formulas,address");
+      range.load("rowCount,columnCount,values,formulas,address,numberFormat");
       await context.sync();
     }
 
@@ -680,6 +681,16 @@ export async function setCellRange(
         );
       }
     }
+
+    recordUndo({
+      ts: Date.now(),
+      tool: "set_cell_range",
+      sheetId,
+      range: rangeAddr,
+      values: range.values as unknown[][],
+      formulas: range.formulas as unknown[][],
+      numberFormat: range.numberFormat as unknown[][],
+    });
 
     const values: unknown[][] = [];
     const formulas: (string | null)[][] = [];
@@ -864,6 +875,18 @@ export async function clearCellRange(
     if (!sheet) throw new Error(`Worksheet with ID ${sheetId} not found`);
 
     const range = sheet.getRange(rangeAddr);
+    range.load("values,formulas,numberFormat,address");
+    await context.sync();
+
+    recordUndo({
+      ts: Date.now(),
+      tool: "clear_cell_range",
+      sheetId,
+      range: rangeAddr,
+      values: range.values as unknown[][],
+      formulas: range.formulas as unknown[][],
+      numberFormat: range.numberFormat as unknown[][],
+    });
 
     switch (clearType) {
       case "contents":

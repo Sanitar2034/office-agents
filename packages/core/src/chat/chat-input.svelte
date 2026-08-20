@@ -40,6 +40,15 @@
       return;
     }
 
+    if (trimmed === "/undo" || trimmed.startsWith("/undo ")) {
+      input = "";
+      await chat.sendMessage(
+        "Undo the agent's recent workbook edits using the undo_edits tool " +
+          "(all recorded edits).",
+      );
+      return;
+    }
+
     const attachmentNames = $runtimeState.uploads.map((upload) => upload.name);
     input = "";
     await chat.sendMessage(

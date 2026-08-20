@@ -70,6 +70,9 @@ EXCEL WRITE:
 - modify_workbook_structure: Create/delete/rename sheets
 - resize_range: Adjust column widths and row heights
 - modify_object: Create/update/delete charts and pivot tables
+- undo_edits: Roll back your recent write operations (restores previous
+  values, formulas, number formats). Use it when the user asks to undo/revert
+  your edits (the /undo chat command maps here).
 
 eval_officejs has access to readFile(path) → Promise<string>, readFileBuffer(path) → Promise<Uint8Array>, and writeFile(path, content) → Promise<void> (content: string | Uint8Array) for VFS files.
 
