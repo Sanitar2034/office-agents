@@ -1,5 +1,5 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyProxyToModel,
   buildCustomModel,
@@ -106,5 +106,56 @@ describe("applyProxyToModel", () => {
     });
     const result = applyProxyToModel(modelWithoutBase, config);
     expect(result.baseUrl).toBeUndefined();
+  });
+});
+
+describe("loadSavedConfig defaults and sanitizing (fork additions)", () => {
+  const ns = { localStoragePrefix: "forktest" } as never;
+
+  function seedStorage(seed: Record<string, unknown>) {
+    const store = new Map<string, string>(
+      Object.entries(seed).map(([k, v]) => [k, JSON.stringify(v)]),
+    );
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    });
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("fills fork defaults for legacy configs (contextLimit, autoCompact, supportsImages)", async () => {
+    seedStorage({
+      "forktest-provider-config": {
+        provider: "custom",
+        apiKey: "k",
+        model: "m",
+      },
+    });
+    const { loadSavedConfig } = await import("../src/provider-config");
+    const cfg = loadSavedConfig(ns as never)!;
+    expect(cfg.contextLimit).toBe(0);
+    expect(cfg.autoCompact).toBe(true);
+    expect(cfg.supportsImages).toBe(true);
+    expect(cfg.temperature).toBeUndefined();
+  });
+
+  it("drops invalid temperature values", async () => {
+    seedStorage({
+      "forktest-provider-config": {
+        provider: "custom",
+        temperature: "hot",
+      },
+    });
+    const { loadSavedConfig } = await import("../src/provider-config");
+    expect(loadSavedConfig(ns as never)!.temperature).toBeUndefined();
+  });
+
+  it("returns null when nothing is saved", async () => {
+    seedStorage({});
+    const { loadSavedConfig } = await import("../src/provider-config");
+    expect(loadSavedConfig(ns as never)).toBeNull();
   });
 });

@@ -131,7 +131,7 @@ const COMPACT_SYSTEM_PROMPT = [
   "Be detailed and factual: this summary replaces the earlier conversation, so nothing important may be lost. Do not invent facts.",
 ].join("\n");
 
-function extractSummaryBlock(text: string): string {
+export function extractSummaryBlock(text: string): string {
   const m = text.match(/<summary>([\s\S]*?)<\/summary>/i);
   if (m) return m[1].trim();
   return text.replace(/<analysis>[\s\S]*?<\/analysis>/gi, "").trim();
