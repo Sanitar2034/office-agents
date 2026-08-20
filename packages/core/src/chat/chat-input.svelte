@@ -72,6 +72,119 @@
     input;
     queueMicrotask(autoResize);
   });
+
+  // --- input autocomplete: / commands, @ files, # skills, $ session vars ---
+  interface Suggestion {
+    label: string;
+    hint: string;
+    insert: string;
+  }
+
+  const CHAT_COMMANDS: Suggestion[] = [
+    { label: "/compact", hint: "сжать контекст вручную", insert: "/compact" },
+    { label: "/undo", hint: "отменить правки агента", insert: "/undo" },
+  ];
+
+  let suggest = $state<{
+    trigger: string;
+    query: string;
+    start: number;
+  } | null>(null);
+  let selIndex = $state(0);
+
+  const suggestions = $derived.by(() => {
+    if (!suggest) return [] as Suggestion[];
+    const q = suggest.query.toLowerCase();
+    let list: Suggestion[] = [];
+    if (suggest.trigger === "/") {
+      list = CHAT_COMMANDS;
+    } else if (suggest.trigger === "@") {
+      list = $runtimeState.uploads.map((u) => ({
+        label: `@${u.name}`,
+        hint: u.size > 0 ? formatFileSize(u.size) : "upload",
+        insert: `/home/user/uploads/${u.name}`,
+      }));
+      if (list.length === 0) {
+        list = [
+          {
+            label: "@файлы",
+            hint: "нет загруженных — прикрепите скрепкой",
+            insert: "",
+          },
+        ];
+      }
+    } else if (suggest.trigger === "#") {
+      list = $runtimeState.skills.map((sk) => ({
+        label: `#${sk.name}`,
+        hint: sk.description.slice(0, 60),
+        insert: sk.name,
+      }));
+      if (list.length === 0) {
+        list = [
+          {
+            label: "#скиллы",
+            hint: "нет установленных (Settings → Skills)",
+            insert: "",
+          },
+        ];
+      }
+    } else if (suggest.trigger === "$") {
+      const pc = $runtimeState.providerConfig;
+      const stats = $runtimeState.sessionStats;
+      const pct =
+        stats.contextWindow > 0
+          ? Math.min(
+              100,
+              Math.round((stats.lastInputTokens / stats.contextWindow) * 100),
+            )
+          : 0;
+      list = [
+        {
+          label: "$model",
+          hint: pc ? pc.model : "не настроено",
+          insert: pc ? `модель: ${pc.model}` : "",
+        },
+        {
+          label: "$context",
+          hint: `${stats.lastInputTokens}/${stats.contextWindow} (${pct}%)`,
+          insert: `контекст: ${stats.lastInputTokens}/${stats.contextWindow} токенов (${pct}%)`,
+        },
+      ];
+    }
+    return q
+      ? list.filter((item) => item.label.toLowerCase().includes(q))
+      : list;
+  });
+
+  function updateSuggest() {
+    const pos = textareaRef?.selectionStart ?? -1;
+    if (pos < 0) {
+      suggest = null;
+      return;
+    }
+    const before = input.slice(0, pos);
+    const m = before.match(/(^|\s)([\/@#\$])([\w.\-\/]*)$/);
+    if (!m) {
+      suggest = null;
+      return;
+    }
+    suggest = { trigger: m[2], query: m[3], start: pos - m[3].length - 1 };
+    selIndex = 0;
+  }
+
+  function acceptSuggestion(item: Suggestion) {
+    if (!suggest || !item.insert) {
+      suggest = null;
+      return;
+    }
+    const pos = textareaRef?.selectionStart ?? input.length;
+    input = input.slice(0, suggest.start) + item.insert + " " + input.slice(pos);
+    suggest = null;
+    queueMicrotask(() => {
+      textareaRef?.focus();
+      autoResize();
+    });
+  }
 </script>
 
 <div
@@ -122,14 +235,64 @@
   />
 
   <div
-    class="bg-(--chat-input-bg) border border-(--chat-border) focus-within:border-(--chat-border-active) transition-colors"
+    class="relative bg-(--chat-input-bg) border border-(--chat-border) focus-within:border-(--chat-border-active) transition-colors"
     style="border-radius: var(--chat-radius)"
   >
+    {#if suggest && suggestions.length > 0}
+      <div
+        class="absolute bottom-full left-0 right-0 mb-1 max-h-48 overflow-y-auto bg-(--chat-bg-secondary) border border-(--chat-border) shadow-lg z-10"
+      >
+        <div class="px-2 py-1 text-[10px] uppercase tracking-wide text-(--chat-text-muted)">
+          {suggest.trigger === "/"
+            ? "команды"
+            : suggest.trigger === "@"
+              ? "файлы"
+              : suggest.trigger === "#"
+                ? "скиллы"
+                : "переменные сессии"}
+        </div>
+        {#each suggestions as item, i (item.label)}
+          <button
+            type="button"
+            onclick={() => acceptSuggestion(item)}
+            onmouseenter={() => (selIndex = i)}
+            class={`w-full text-left px-2 py-1.5 flex items-baseline justify-between gap-2 transition-colors ${i === selIndex ? "bg-(--chat-accent)/20" : "hover:bg-(--chat-bg)"}`}
+          >
+            <span class="text-xs text-(--chat-text-primary) truncate">{item.label}</span>
+            <span class="text-[10px] text-(--chat-text-muted) truncate max-w-[55%]">{item.hint}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
     <textarea
       bind:this={textareaRef}
       bind:value={input}
-      oninput={autoResize}
+      oninput={() => {
+        autoResize();
+        updateSuggest();
+      }}
       onkeydown={(event) => {
+        if (suggest && suggestions.length > 0) {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            selIndex = Math.min(selIndex + 1, suggestions.length - 1);
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            selIndex = Math.max(selIndex - 1, 0);
+            return;
+          }
+          if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+            event.preventDefault();
+            acceptSuggestion(suggestions[selIndex]);
+            return;
+          }
+          if (event.key === "Escape") {
+            suggest = null;
+            return;
+          }
+        }
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           void handleSubmit();
