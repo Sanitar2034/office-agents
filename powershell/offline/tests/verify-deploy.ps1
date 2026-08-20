@@ -50,6 +50,9 @@ Assert "excel bundle contains 'undo_edits'" (
 Assert "excel bundle contains 'com_bridge'" (
     (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'com_bridge' -List -Quiet)
 )
+Assert "excel bundle contains 'Desktop Power Tools'" (
+    (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern ([regex]::Escape('Desktop Power Tools')) -List -Quiet)
+)
 
 # 4) no sourcemaps shipped
 $maps = Get-ChildItem $site -Recurse -Filter '*.map'

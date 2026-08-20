@@ -162,6 +162,50 @@
 
   const savedWeb = loadWebConfig(ns);
   let webToolsEnabled = $state(savedWeb.enabled !== false);
+
+  // Desktop power tools (COM bridge) - Excel only, opt-in, off by default
+  const initialIsExcel: boolean = adapter?.appName === "OpenExcel";
+  let comEnabled = $state(false);
+  let comBusy = $state(false);
+  let comStatus = $state<{ excelRunning?: boolean; workbook?: string | null } | null>(null);
+  let comReachable = $state(true);
+
+  async function loadComStatus(): Promise<void> {
+    try {
+      const res = await fetch(`${location.origin}/oa-config/com-bridge`);
+      const data = (await res.json()) as { enabled?: boolean };
+      comEnabled = data.enabled === true;
+      comReachable = true;
+      if (comEnabled) {
+        const st = await fetch(`${location.origin}/oa-com/status`, { method: "POST" });
+        comStatus = (await st.json()) as typeof comStatus;
+      } else {
+        comStatus = null;
+      }
+    } catch {
+      comReachable = false;
+      comStatus = null;
+    }
+  }
+
+  async function toggleCom(): Promise<void> {
+    comBusy = true;
+    try {
+      const res = await fetch(`${location.origin}/oa-config/com-bridge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !comEnabled }),
+      });
+      if (res.ok) {
+        comEnabled = !comEnabled;
+        await loadComStatus();
+      }
+    } finally {
+      comBusy = false;
+    }
+  }
+
+  if (initialIsExcel) void loadComStatus();
   let webSearchProvider = $state(savedWeb.searchProvider);
   let imageSearchProvider = $state(savedWeb.imageSearchProvider);
   let webFetchProvider = $state(savedWeb.fetchProvider);
@@ -1031,6 +1075,45 @@
           expandToolCalls ? "Collapse tool calls by default" : "Expand tool calls by default",
         )}
       </div>
+
+      {#if adapter?.appName === "OpenExcel"}
+      <div class="border-t border-(--chat-border) pt-4 space-y-3">
+        <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
+          desktop power tools (COM bridge)
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-xs text-(--chat-text-secondary)">
+              Enable Desktop Power Tools
+            </span>
+            <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
+              Run macros (Application.Run) and create/edit/refresh Power Query
+              in the open workbook via COM. Needs Excel running.
+            </p>
+          </div>
+          {@render toggleSwitch(
+            comEnabled,
+            () => void toggleCom(),
+            comEnabled ? "Disable desktop power tools" : "Enable desktop power tools",
+          )}
+        </div>
+
+        {#if !comReachable}
+          <p class="text-[10px] text-(--chat-text-muted)">
+            Offline server unreachable — run start.ps1 on this machine.
+          </p>
+        {:else if comEnabled}
+          <p class="text-[10px] text-(--chat-text-muted)">
+            {#if comStatus?.excelRunning}
+              Excel: running{comStatus?.workbook ? `, workbook: ${comStatus.workbook}` : ""}
+            {:else}
+              Excel is not running — open a workbook to use desktop tools.
+            {/if}
+          </p>
+        {/if}
+      </div>
+      {/if}
 
       <div class="border-t border-(--chat-border) pt-4 space-y-3">
         <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
