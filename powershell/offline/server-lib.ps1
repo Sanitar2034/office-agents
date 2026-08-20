@@ -477,6 +477,98 @@ function Invoke-OaPbiDax {
     return Invoke-OaPbiDaxAsCmd -Port $Port -Query $Query
 }
 
+function Invoke-OaPbiBridgeRpc {
+    # One JSON-RPC 2.0 call over the Desktop Bridge named pipe
+    # (Content-Length framing, like LSP). Returns parsed result object.
+    param([string]$Method, [hashtable]$Params = @{})
+    $proc = Get-Process PBIDesktop -ErrorAction Stop | Select-Object -First 1
+    $pipeName = "pbi-desktop-bridge-$($proc.Id)"
+    $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
+    try {
+        $pipe.Connect(5000)
+        $pipe.ReadMode = [System.IO.Pipes.PipeTransmissionMode]::Byte
+        $body = @{ jsonrpc = '2.0'; id = 1; method = $Method; params = $Params } |
+            ConvertTo-Json -Depth 6 -Compress
+        $bodyBytes = [Text.Encoding]::UTF8.GetBytes($body)
+        $header = [Text.Encoding]::ASCII.GetBytes("Content-Length: $($bodyBytes.Length)`r`n`r`n")
+        $pipe.Write($header, 0, $header.Length)
+        $pipe.Write($bodyBytes, 0, $bodyBytes.Length)
+        $pipe.Flush()
+
+        # read framed response: headers until CRLFCRLF, then exactly N bytes
+        $headerBytes = New-Object System.Collections.Generic.List[byte]
+        $buf = New-Object byte[] 1
+        while ($true) {
+            $n = $pipe.Read($buf, 0, 1)
+            if ($n -le 0) { throw 'pipe closed while reading headers' }
+            $headerBytes.Add($buf[0])
+            $cnt = $headerBytes.Count
+            if ($cnt -ge 4) {
+                $last4 = $headerBytes.GetRange($cnt - 4, 4)
+                if (($last4[0] -eq 13) -and ($last4[1] -eq 10) -and ($last4[2] -eq 13) -and ($last4[3] -eq 10)) { break }
+            }
+            if ($cnt -gt 16384) { throw 'bridge response header too large' }
+        }
+        $headerText = [Text.Encoding]::ASCII.GetString($headerBytes.ToArray())
+        $len = 0
+        if ($headerText -match 'Content-Length:\s*(\d+)') { $len = [int]$Matches[1] }
+        if ($len -le 0) { throw "no Content-Length in bridge response: $($headerText.Substring(0, [Math]::Min(80, $headerText.Length)))" }
+        $resp = New-Object byte[] $len
+        $got = 0
+        while ($got -lt $len) {
+            $n = $pipe.Read($resp, $got, $len - $got)
+            if ($n -le 0) { break }
+            $got += $n
+        }
+        $json = [Text.Encoding]::UTF8.GetString($resp, 0, $got) | ConvertFrom-Json
+        if ($json.error) { throw "bridge rpc error: $($json.error | ConvertTo-Json -Compress)" }
+        return $json.result
+    }
+    finally {
+        $pipe.Dispose()
+    }
+}
+
+function Find-OaPbiPageId {
+    # Discover a page id from the OPEN file: .pbix stores Report/Layout as
+    # UTF-16 JSON inside an OPC zip; .pbip/PBIR projects have per-page json.
+    param([string]$FilePath)
+    if (-not $FilePath -or -not (Test-Path -LiteralPath $FilePath)) { return $null }
+    try {
+        if ($FilePath -like '*.pbix') {
+            # modern pbix stores PBIR pages inside the zip:
+            # Report/definition/pages/<pageId>/page.json
+            Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+            try {
+                foreach ($e in $zip.Entries) {
+                    if ($e.FullName -match '^Report/definition/pages/([^/]+)/page\.json$') {
+                        return $Matches[1]
+                    }
+                }
+                # legacy pbix: Report/Layout as UTF-16 JSON with sections
+                $entry = $zip.Entries | Where-Object { $_.FullName -eq 'Report/Layout' } | Select-Object -First 1
+                if ($entry) {
+                    $sr = New-Object IO.StreamReader($entry.Open(), [Text.Encoding]::Unicode)
+                    $layout = $sr.ReadToEnd(); $sr.Close()
+                    $m = [regex]::Match($layout, '"sections"\s*:\s*\[\s*\{[\s\S]{0,400}?"name"\s*:\s*"([^"]+)"')
+                    if ($m.Success) { return $m.Groups[1].Value }
+                }
+                return $null
+            }
+            finally { $zip.Dispose() }
+        }
+        if ($FilePath -like '*.pbip') {
+            $dir = Split-Path -Parent $FilePath
+            $pages = Get-ChildItem -LiteralPath (Join-Path $dir 'report\definition\pages') -Filter '*.json' -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notmatch 'pages\.json$' } | Select-Object -First 1
+            if ($pages) { return $pages.BaseName }
+            return $null
+        }
+    } catch { return $null }
+    return $null
+}
+
 function Handle-OaPbi {
     # Power BI Desktop bridge: DAX queries against the local msmdsrv engine.
     # Gated by the same desktop-power toggle as the COM bridge.
@@ -503,6 +595,53 @@ function Handle-OaPbi {
     if (-not $origin -or -not $origin.StartsWith('https://localhost:')) {
         Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
         return "$($Req.Method) $path [403 bad origin]"
+    }
+
+    if ($path -eq '/oa-pbi/bridge') {
+        $body = Read-OaJsonBody $Req
+        $action = [string]$body.action
+        $methodMap = @{
+            manifest   = 'bridge.manifest'
+            state      = 'application.state.get/v1'
+            screenshot = 'report.snapshot.capture/v1'
+            reload     = 'file.reload/v1'
+        }
+        if (-not $methodMap.ContainsKey($action)) {
+            Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message "action must be one of: $($methodMap.Keys -join ', ')" -HeadOnly $HeadOnly
+            return "POST /oa-pbi/bridge [400 unknown action]"
+        }
+        $params = @{}
+        if ($action -eq 'screenshot') {
+            $pageId = [string]$body.pageId
+            if (-not $pageId) {
+                # pageId is REQUIRED by the bridge - discover it from the open file
+                try {
+                    $st = Invoke-OaPbiBridgeRpc -Method 'application.state.get/v1' -Params @{}
+                    $pageId = Find-OaPbiPageId ([string]$st.currentFilePath)
+                } catch { }
+            }
+            if (-not $pageId) {
+                $json = '{"ok":false,"error":"pageId required and could not be discovered from the open file (open a saved .pbix/.pbip)"}'
+                $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+                Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+                return "POST /oa-pbi/bridge [ok:false no pageId]"
+            }
+            $params['pageId'] = $pageId
+            $params['scale'] = if ($body.scale) { [double]$body.scale } else { 1.0 }
+        }
+        try {
+            $result = Invoke-OaPbiBridgeRpc -Method $methodMap[$action] -Params $params
+            $json = @{ ok = $true; action = $action; result = $result } | ConvertTo-Json -Depth 8 -Compress
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/bridge [200 $action]"
+        }
+        catch {
+            $json = '{"ok":false,"error":' + ($_.Exception.Message | ConvertTo-Json) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/bridge [ok:false $($_.Exception.Message)]"
+        }
     }
 
     $body = Read-OaJsonBody $Req

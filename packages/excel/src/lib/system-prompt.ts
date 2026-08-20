@@ -81,6 +81,9 @@ EXCEL WRITE:
 - pbi_query: read-only DAX (EVALUATE) against the model open in Power BI
   Desktop (local engine, no cloud). Same 'Desktop power tools' gate; if the
   user works with a .pbix, use it to read measures/tables.
+- pbi_bridge: Power BI Desktop Bridge - state (open file), screenshot of a
+  report page (PNG lands in the VFS: view it with read - you have vision),
+  reload (discards unsaved changes - confirm with the user first).
 
 eval_officejs has access to readFile(path) → Promise<string>, readFileBuffer(path) → Promise<Uint8Array>, and writeFile(path, content) → Promise<void> (content: string | Uint8Array) for VFS files.
 

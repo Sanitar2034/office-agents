@@ -68,10 +68,15 @@ if (-not $cert) { Write-Host "No certificate: run install.ps1 first" -Foreground
 $busy = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
 if ($busy) { Write-Host "Port 3000 busy - stop other server instances first" -ForegroundColor Red; exit 1 }
 
-# backup server-config.json: com-bridge tests mutate it
+# backup server-config.json and REMOVE it for the run: the server must
+# start from the clean default state (bridge disabled) regardless of what
+# live testing left in the config
 $cfgFile = Join-Path $root 'server-config.json'
 $cfgBackup = $null
-if (Test-Path $cfgFile) { $cfgBackup = Get-Content $cfgFile -Raw }
+if (Test-Path $cfgFile) {
+    $cfgBackup = Get-Content $cfgFile -Raw
+    Remove-Item $cfgFile -Force
+}
 
 # 1) mock LLM on 8899
 $mock = Start-Process node -ArgumentList "`"$PSScriptRoot\mock-llm.js`"" -PassThru -WindowStyle Hidden
@@ -146,6 +151,13 @@ try {
     Assert 'pbi dax: 400 without query' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
     $pq2 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE ROW(\"x\", 1+1)"}' @{ Origin = 'https://localhost:3000' }
     Assert 'pbi dax: agent contract (ok:true with rows, or ok:false PBI not running)' ($pq2.Code -eq 200 -and ($pq2.Text -match '"ok":false' -or $pq2.Text -match '"ok":true'))
+    # --- PBI Desktop Bridge (named pipe JSON-RPC) ---
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi bridge: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/bridge' '{"action":"manifest"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi bridge: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/bridge' '{"action":"manifest"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    Assert 'pbi bridge: 400 unknown action' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/bridge' '{"action":"nope"}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
+
     $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
 }
 finally {
