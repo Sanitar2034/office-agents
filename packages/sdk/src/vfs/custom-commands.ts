@@ -391,6 +391,13 @@ function createWebSearchCmd(ns: StorageNamespace): DescribedCommand {
 
       try {
         const webConfig = loadWebConfig(ns);
+        if (webConfig.enabled === false) {
+          return {
+            stdout: "",
+            stderr: "Web tools are disabled (Settings -> web tools toggle).",
+            exitCode: 1,
+          };
+        }
         const results = await searchWeb(
           query,
           {
@@ -454,6 +461,13 @@ function createWebFetchCmd(ns: StorageNamespace): DescribedCommand {
 
       try {
         const webConfig = loadWebConfig(ns);
+        if (webConfig.enabled === false) {
+          return {
+            stdout: "",
+            stderr: "Web tools are disabled (Settings -> web tools toggle).",
+            exitCode: 1,
+          };
+        }
         const result = await fetchWeb(
           url,
           {
@@ -508,7 +522,7 @@ function createImageSearchCmd(ns: StorageNamespace): DescribedCommand {
       "- image-search <query> [--num=N] [--page=N] [--gl=COUNTRY] [--hl=LANG] [--json] — Search for images. Returns image URLs, dimensions, source, and page link.",
     isAvailable: () => {
       const webConfig = loadWebConfig(ns);
-      return !!webConfig.apiKeys?.serper;
+      return webConfig.enabled !== false && !!webConfig.apiKeys?.serper;
     },
     command: defineCommand("image-search", async (args) => {
       const { flags, positional } = parseFlags(args);
@@ -532,6 +546,13 @@ function createImageSearchCmd(ns: StorageNamespace): DescribedCommand {
 
       try {
         const webConfig = loadWebConfig(ns);
+        if (webConfig.enabled === false) {
+          return {
+            stdout: "",
+            stderr: "Web tools are disabled (Settings -> web tools toggle).",
+            exitCode: 1,
+          };
+        }
         const results = await searchImages(
           query,
           {

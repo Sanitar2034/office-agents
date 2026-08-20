@@ -476,8 +476,13 @@ export class AgentRuntime {
   applyConfig(config: ProviderConfig) {
     let contextWindow = 0;
     let baseModel: Model<Api>;
-    if (config.provider === "custom") {
-      const custom = buildCustomModel(config);
+    if (config.provider === "custom" || config.provider === "openwebui") {
+      // Open WebUI exposes exactly one protocol: OpenAI chat completions
+      const modelConfig =
+        config.provider === "openwebui"
+          ? { ...config, apiType: "openai-completions" }
+          : config;
+      const custom = buildCustomModel(modelConfig);
       if (!custom) return;
       baseModel = custom;
     } else {

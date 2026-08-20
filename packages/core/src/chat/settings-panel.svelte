@@ -160,6 +160,7 @@
   if (initialConnectionMode === "proxy") void loadProxyBackend();
 
   const savedWeb = loadWebConfig(ns);
+  let webToolsEnabled = $state(savedWeb.enabled !== false);
   let webSearchProvider = $state(savedWeb.searchProvider);
   let imageSearchProvider = $state(savedWeb.imageSearchProvider);
   let webFetchProvider = $state(savedWeb.fetchProvider);
@@ -181,7 +182,7 @@
   const expandToolCalls = $derived(
     $runtimeState.providerConfig?.expandToolCalls ?? false,
   );
-  const isCustom = $derived(provider === "custom");
+  const isCustom = $derived(provider === "custom" || provider === "openwebui");
   const models = $derived(
     provider && !isCustom ? chat.getModelsForProvider(provider) : [],
   );
@@ -263,7 +264,7 @@
     }
 
     const isValid =
-      nextProvider === "custom"
+      nextProvider === "custom" || nextProvider === "openwebui"
         ? Boolean(
             nextProvider &&
               nextApiType &&
@@ -298,6 +299,7 @@
 
   function updateWebSettings(
     updates: Partial<{
+      enabled: boolean;
       searchProvider: string;
       imageSearchProvider: string;
       fetchProvider: string;
@@ -306,6 +308,7 @@
       exaApiKey: string;
     }>,
   ) {
+    webToolsEnabled = updates.enabled ?? webToolsEnabled;
     webSearchProvider = updates.searchProvider ?? webSearchProvider;
     imageSearchProvider =
       updates.imageSearchProvider ?? imageSearchProvider;
@@ -315,6 +318,7 @@
     exaApiKey = updates.exaApiKey ?? exaApiKey;
 
     saveWebConfig(ns, {
+      enabled: webToolsEnabled,
       searchProvider: webSearchProvider,
       imageSearchProvider,
       fetchProvider: webFetchProvider,
@@ -328,9 +332,9 @@
 
   function handleProviderChange(newProvider: string) {
     if (newProvider === "openwebui") {
-      // preset: Open WebUI speaks the OpenAI protocol at <url>/api with a webui API key
+      // Open WebUI speaks exactly one protocol: OpenAI chat completions at <url>/api
       updateAndSync({
-        provider: "custom",
+        provider: "openwebui",
         model: "",
         authMethod: "apikey",
         apiType: "openai-completions",
@@ -513,6 +517,19 @@
       </label>
 
       {#if isCustom}
+        {#if provider === "openwebui"}
+        <div>
+          <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+            API Type
+          </span>
+          <p class="text-sm text-(--chat-text-primary) py-1">
+            OpenAI Completions
+          </p>
+          <p class="text-[10px] text-(--chat-text-muted) mt-1">
+            Fixed — Open WebUI exposes only this protocol
+          </p>
+        </div>
+        {:else}
         <label class="block">
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
             API Type
@@ -534,6 +551,7 @@
             {API_TYPES.find((type) => type.id === apiType)?.hint}
           </p>
         </label>
+        {/if}
 
         <div>
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
@@ -996,6 +1014,22 @@
       <div class="border-t border-(--chat-border) pt-4 space-y-3">
         <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
           web tools
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-xs text-(--chat-text-secondary)">
+              Enable Web Tools
+            </span>
+            <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
+              Off — web-search / web-fetch / image-search return "disabled"
+            </p>
+          </div>
+          {@render toggleSwitch(
+            webToolsEnabled,
+            () => updateWebSettings({ enabled: !webToolsEnabled }),
+            webToolsEnabled ? "Disable web tools" : "Enable web tools",
+          )}
         </div>
 
         <label class="block">

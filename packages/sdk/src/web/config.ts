@@ -1,6 +1,8 @@
 import type { StorageNamespace } from "../context";
 
 export interface WebConfig {
+  /** Master switch: false disables web-search / web-fetch / image-search entirely. */
+  enabled: boolean;
   searchProvider: string;
   imageSearchProvider: string;
   fetchProvider: string;
@@ -16,6 +18,7 @@ function webConfigKey(ns: StorageNamespace): string {
 }
 
 const DEFAULT_WEB_CONFIG: WebConfig = {
+  enabled: true,
   searchProvider: "ddgs",
   imageSearchProvider: "serper",
   fetchProvider: "basic",
@@ -28,6 +31,7 @@ export function loadWebConfig(ns: StorageNamespace): WebConfig {
     if (!raw) return { ...DEFAULT_WEB_CONFIG };
     const parsed = JSON.parse(raw) as Partial<WebConfig>;
     return {
+      enabled: parsed.enabled !== false,
       searchProvider:
         parsed.searchProvider || DEFAULT_WEB_CONFIG.searchProvider,
       imageSearchProvider:
@@ -49,6 +53,7 @@ export function saveWebConfig(
 ) {
   const current = loadWebConfig(ns);
   const next: WebConfig = {
+    enabled: config.enabled !== undefined ? config.enabled : current.enabled,
     searchProvider: config.searchProvider || current.searchProvider,
     imageSearchProvider:
       config.imageSearchProvider || current.imageSearchProvider,
