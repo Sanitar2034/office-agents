@@ -135,6 +135,18 @@ try {
 
     $dis = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
     Assert 'com-bridge disable: 200' ($dis.Code -eq 200)
+
+    # --- PBI bridge (gated by the same desktop power toggle) ---
+    $pst = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/status'
+    Assert 'pbi status: 200 + pbiRunning field' ($pst.Code -eq 200 -and $pst.Text -match 'pbiRunning')
+    Assert 'pbi dax: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE 1"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi dax: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"x"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    Assert 'pbi dax: 400 without query' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
+    $pq2 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE ROW(\"x\", 1+1)"}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi dax: agent contract (ok:true with rows, or ok:false PBI not running)' ($pq2.Code -eq 200 -and ($pq2.Text -match '"ok":false' -or $pq2.Text -match '"ok":true'))
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
 }
 finally {
     if ($null -ne $cfgBackup) { Set-Content -LiteralPath $cfgFile -Value $cfgBackup -NoNewline -Encoding UTF8 }

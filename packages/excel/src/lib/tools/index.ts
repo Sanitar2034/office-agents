@@ -35,6 +35,7 @@ import { resizeRangeTool } from "./resize-range";
 import { screenshotRangeTool } from "./screenshot-range";
 import { undoEditsTool } from "./undo-edits";
 import { createComBridgeTool } from "./com-bridge";
+import { createPbiQueryTool } from "./pbi-query";
 import { initUndoJournal } from "../excel/undo-journal";
 import { searchDataTool } from "./search-data";
 import { setCellRangeTool } from "./set-cell-range";
@@ -62,5 +63,6 @@ export function createExcelTools(ctx: AgentContext) {
     createEvalOfficeJsTool(ctx),
     undoEditsTool,
     createComBridgeTool(),
+    createPbiQueryTool(),
   ];
 }

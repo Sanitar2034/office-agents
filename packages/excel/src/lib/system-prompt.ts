@@ -78,6 +78,9 @@ EXCEL WRITE:
   status. Only works when the user enabled 'Desktop power tools' in
   Settings and Excel is open; otherwise answers 'disabled'. Never assume
   it is available — check with action=status first.
+- pbi_query: read-only DAX (EVALUATE) against the model open in Power BI
+  Desktop (local engine, no cloud). Same 'Desktop power tools' gate; if the
+  user works with a .pbix, use it to read measures/tables.
 
 eval_officejs has access to readFile(path) → Promise<string>, readFileBuffer(path) → Promise<Uint8Array>, and writeFile(path, content) → Promise<void> (content: string | Uint8Array) for VFS files.
 

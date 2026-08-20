@@ -372,6 +372,106 @@ function Handle-OaCom {
     }
 }
 
+function Find-OaPbiPort {
+    # newest Power BI Desktop workspace port (msmdsrv.port.txt), or $null
+    $wsDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Power BI Desktop\AnalysisServicesWorkspaces'
+    try {
+        $ports = Get-ChildItem -LiteralPath $wsDir -Filter 'msmdsrv.port.txt' -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+        if ($ports.Count -gt 0) {
+            $txt = (Get-Content -LiteralPath $ports[0].FullName -Raw).Trim()
+            $p = 0
+            if ([int]::TryParse($txt, [ref]$p)) { return $p }
+        }
+    } catch { }
+    return $null
+}
+
+function Invoke-OaPbiDax {
+    # DAX via MSOLAP OleDb against the local AS engine of a running PBI Desktop
+    param([int]$Port, [string]$Query)
+    $conn = New-Object System.Data.OleDb.OleDbConnection("Provider=MSOLAP;Data Source=localhost:$Port")
+    try {
+        $conn.Open()
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = $Query
+        $cmd.CommandTimeout = 60
+        $reader = $cmd.ExecuteReader()
+        $cols = @()
+        for ($i = 0; $i -lt $reader.FieldCount; $i++) { $cols += $reader.GetName($i) }
+        $rows = @()
+        while ($reader.Read()) {
+            $row = @()
+            for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                $v = $reader.GetValue($i)
+                if ($v -is [DBNull]) { $row += $null } else { $row += $v }
+            }
+            $rows += ,$row
+        }
+        $reader.Close()
+        return @{ ok = $true; columns = $cols; rows = $rows; rowCount = $rows.Count }
+    }
+    finally {
+        $conn.Dispose()
+    }
+}
+
+function Handle-OaPbi {
+    # Power BI Desktop bridge: DAX queries against the local msmdsrv engine.
+    # Gated by the same desktop-power toggle as the COM bridge.
+    param($Ssl, $Req, $Sync, [bool]$HeadOnly)
+    $path = ([string]$Req.RawUrl -split '\?')[0].TrimEnd('/')
+
+    $port = Find-OaPbiPort
+    $running = 'false'; $portJson = 'null'
+    if ($port) { $running = 'true'; $portJson = "$port" }
+
+    if ($path -eq '/oa-pbi/status') {
+        $json = '{"pbiRunning":' + $running + ',"port":' + $portJson + '}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "GET /oa-pbi/status [200 running=$running]"
+    }
+
+    if ($Sync.ComBridge -ne $true) {
+        Send-OaError -Ssl $Ssl -Code 503 -Status 'Service Disabled' -Message 'Desktop power tools are disabled (Settings)' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [503 disabled]"
+    }
+
+    $origin = [string]$Req.Headers['origin']
+    if (-not $origin -or -not $origin.StartsWith('https://localhost:')) {
+        Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [403 bad origin]"
+    }
+
+    $body = Read-OaJsonBody $Req
+    if (-not $body -or -not $body.query) {
+        Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'body must be {"query":"EVALUATE ..."}' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [400]"
+    }
+
+    if (-not $port) {
+        $json = '{"ok":false,"error":"Power BI Desktop is not running (open a .pbix first)"}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "POST /oa-pbi/dax [ok:false no pbi]"
+    }
+
+    try {
+        $result = Invoke-OaPbiDax -Port $port -Query ([string]$body.query)
+        $json = $result | ConvertTo-Json -Depth 5 -Compress
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "POST /oa-pbi/dax [200 rows=$($result.rowCount)]"
+    }
+    catch {
+        $json = '{"ok":false,"error":' + ($_.Exception.Message | ConvertTo-Json) + '}'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+        return "POST /oa-pbi/dax [ok:false $($_.Exception.Message)]"
+    }
+}
+
 function Handle-OaConnection {
     param($Client, [string]$SiteDir, [string]$OfficeJsDir, $Cert, $Sync)
     try {
@@ -409,6 +509,10 @@ function Handle-OaConnection {
 
             if ($rawUrl.StartsWith('/oa-com/')) {
                 return (Handle-OaCom -Ssl $ssl -Req $req -Sync $Sync -HeadOnly $headOnly)
+            }
+
+            if ($rawUrl.StartsWith('/oa-pbi/')) {
+                return (Handle-OaPbi -Ssl $ssl -Req $req -Sync $Sync -HeadOnly $headOnly)
             }
 
             if ($rawUrl.StartsWith('/llm-proxy') -and $LlmTarget) {
