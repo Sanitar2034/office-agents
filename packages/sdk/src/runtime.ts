@@ -62,7 +62,11 @@ import type { CustomCommandsResult } from "./vfs/custom-commands";
 
 export interface RuntimeAdapter {
   tools: AgentTool[] | ((ctx: AgentContext) => AgentTool[]);
-  buildSystemPrompt: (skills: SkillMeta[], commandSnippets: string[]) => string;
+  buildSystemPrompt: (
+    skills: SkillMeta[],
+    commandSnippets: string[],
+    capabilities?: { images: boolean },
+  ) => string;
   getDocumentId: () => Promise<string>;
   getDocumentMetadata?: () => Promise<{
     metadata: object;
@@ -515,14 +519,20 @@ export class AgentRuntime {
     const systemPrompt = this.adapter.buildSystemPrompt(
       this.skills,
       this.context.commandSnippets,
+      { images: config.supportsImages !== false },
     );
+
+    const tools =
+      config.supportsImages === false
+        ? this.tools.filter((t) => !t.name.includes("screenshot"))
+        : this.tools;
 
     const agent = new Agent({
       initialState: {
         model: proxiedModel,
         systemPrompt,
         thinkingLevel: thinkingLevelToAgent(config.thinking),
-        tools: this.tools,
+        tools,
         messages: existingMessages,
       },
       streamFn: async (model, context, options) => {

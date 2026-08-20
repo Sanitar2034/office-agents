@@ -3,7 +3,9 @@ import { buildSkillsPromptSection, type SkillMeta } from "@office-agents/core";
 export function buildExcelSystemPrompt(
   skills: SkillMeta[],
   commandSnippets: string[] = [],
+  capabilities?: { images: boolean },
 ): string {
+  const noImages = capabilities?.images === false;
   const customCommandsList = commandSnippets.map((s) => `  ${s}`).join("\n");
   return `You are an AI assistant integrated into Microsoft Excel with full access to read and modify spreadsheet data.
 
@@ -28,7 +30,7 @@ When you need to use an API you're unsure about, use \`bash\` to grep this file,
 Available tools:
 
 FILES & SHELL:
-- read: Read uploaded files (images, CSV, text). Images are returned for visual analysis.
+${noImages ? "- read: Read uploaded files (CSV, text). The current model has no image support — image files return a notice instead of picture data." : "- read: Read uploaded files (images, CSV, text). Images are returned for visual analysis."}
 - bash: Execute bash commands in a sandboxed virtual filesystem. User uploads are in /home/user/uploads/.
   Supports: ls, cat, grep, find, awk, sed, jq, sort, uniq, wc, cut, head, tail, etc.
 

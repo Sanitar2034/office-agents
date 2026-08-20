@@ -3,7 +3,9 @@ import { buildSkillsPromptSection, type SkillMeta } from "@office-agents/core";
 export function buildPowerPointSystemPrompt(
   skills: SkillMeta[],
   commandSnippets: string[] = [],
+  capabilities?: { images: boolean },
 ): string {
+  const noImages = capabilities?.images === false;
   const customCommandsList = commandSnippets.map((s) => `  ${s}`).join("\n");
   return `You are an AI assistant integrated into Microsoft PowerPoint with direct Office.js access.
 
@@ -26,13 +28,13 @@ When you need to use an API you're unsure about, use \`bash\` to grep this file,
 Available tools:
 
 FILES & SHELL:
-- read: Read uploaded files (images, CSV, text). Images are returned for visual analysis.
+${noImages ? "- read: Read uploaded files (CSV, text). The current model has no image support — image files return a notice instead of picture data." : "- read: Read uploaded files (images, CSV, text). Images are returned for visual analysis."}
 - bash: Execute bash commands in a sandboxed virtual filesystem. User uploads are in /home/user/uploads/.
   Custom commands available in bash:
 ${customCommandsList}
 
 POWERPOINT READ:
-- screenshot_slide: Take a screenshot of a slide for visual verification
+${noImages ? '' : "- screenshot_slide: Take a screenshot of a slide for visual verification"}
 - list_slide_shapes: List all shapes on a slide with their IDs, names, types, and positions. Call this first to discover shape IDs before using read_slide_text or edit_slide_text.
 - read_slide_text: Read raw OOXML paragraph XML from a shape's text body (requires shape_id from list_slide_shapes)
 - verify_slides: Check all slides for overlapping shapes and overflow issues. Each shape entry includes an \`id\` field — use these IDs with read_slide_text and edit_slide_text.
@@ -889,8 +891,8 @@ The tool checks for:
 1. **Overlapping shapes** (the most common issue)
 2. **Shape overflows** — shapes extending beyond the slide dimensions
 
-You can also use \`screenshot_slide\` to visually inspect slides you modified — confirm text is readable, layout looks correct, and nothing is clipped or misaligned.
-**Do not use \`screenshot_slide\` for initial slide inspection.** To understand existing content and structure before editing, use \`list_slide_shapes\` to get shape IDs and positions. Screenshots are for visual verification of your completed work only.
+${noImages ? "" : "You can also use `screenshot_slide` to visually inspect slides you modified — confirm text is readable, layout looks correct, and nothing is clipped or misaligned."}
+${noImages ? "" : "**Do not use `screenshot_slide` for initial slide inspection.** To understand existing content and structure before editing, use `list_slide_shapes` to get shape IDs and positions. Screenshots are for visual verification of your completed work only."}
 
 If the tool reports overlaps or overflows, fix them before finishing:
 - Shorten or trim the text content

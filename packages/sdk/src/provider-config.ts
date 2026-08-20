@@ -19,6 +19,8 @@ export interface ProviderConfig {
   autoCompact: boolean;
   /** Sampling temperature; undefined = provider default. */
   temperature?: number;
+  /** Whether the model accepts image inputs; false hides screenshot/image tools. */
+  supportsImages: boolean;
   apiType?: string;
   customBaseUrl?: string;
   authMethod?: "apikey" | "oauth";
@@ -87,6 +89,7 @@ export function loadSavedConfig(ns: StorageNamespace): ProviderConfig | null {
           (typeof config.temperature !== "number" || Number.isNaN(config.temperature))) {
         config.temperature = undefined;
       }
+      if (config.supportsImages === undefined) config.supportsImages = true;
       if (config.authMethod === "oauth") {
         const creds = loadOAuthCredentials(ns, config.provider);
         if (creds) config.apiKey = creds.access;

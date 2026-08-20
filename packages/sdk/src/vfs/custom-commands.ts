@@ -376,6 +376,7 @@ function createWebSearchCmd(ns: StorageNamespace): DescribedCommand {
   return {
     promptSnippet:
       "- web-search <query> [--max=N] [--region=REGION] [--time=d|w|m|y] [--page=N] [--json] — Search the web. Returns title, URL, and snippet for each result.",
+    isAvailable: () => loadWebConfig(ns).enabled !== false,
     command: defineCommand("web-search", async (args) => {
       const { flags, positional } = parseFlags(args);
       const query = positional.join(" ");
@@ -446,6 +447,7 @@ function createWebFetchCmd(ns: StorageNamespace): DescribedCommand {
   return {
     promptSnippet:
       "- web-fetch <url> <outfile> — Fetch a web page and extract its readable content to a file. Use head/grep/tail to read selectively.",
+    isAvailable: () => loadWebConfig(ns).enabled !== false,
     command: defineCommand("web-fetch", async (args, ctx) => {
       const url = args[0];
       const outFile = args[1];

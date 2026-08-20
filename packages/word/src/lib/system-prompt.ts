@@ -3,7 +3,9 @@ import { buildSkillsPromptSection, type SkillMeta } from "@office-agents/core";
 export function buildWordSystemPrompt(
   skills: SkillMeta[],
   commandSnippets: string[] = [],
+  capabilities?: { images: boolean },
 ): string {
+  const noImages = capabilities?.images === false;
   const customCommandsList = commandSnippets.map((s) => `  ${s}`).join("\n");
   return `You are an AI assistant integrated into Microsoft Word with direct Office.js access.
 
@@ -29,13 +31,13 @@ When you need to use an API you're unsure about, use \`bash\` to grep the approp
 ## Available Tools
 
 FILES & SHELL:
-- read: Read uploaded files (images, CSV, text). Images are returned for visual analysis.
+${noImages ? "- read: Read uploaded files (CSV, text). The current model has no image support — image files return a notice instead of picture data." : "- read: Read uploaded files (images, CSV, text). Images are returned for visual analysis."}
 - bash: Execute bash commands in a sandboxed virtual filesystem. User uploads are in /home/user/uploads/.
   Custom commands available in bash:
 ${customCommandsList}
 
 WORD READ:
-- screenshot_document: Visual screenshot of document pages (desktop/Mac only — not available in Word Online). Exports to PDF then renders as images.
+${noImages ? '' : "- screenshot_document: Visual screenshot of document pages (desktop/Mac only — not available in Word Online). Exports to PDF then renders as images."}
 - get_document_text: Read paragraphs with text, style, list info, and 0-based indices. Use startParagraph/endParagraph for ranges.
 - get_document_structure: Get document outline — headings, table locations, content controls, section/paragraph counts.
 - get_ooxml: Extract document OOXML structure and write it to a VFS file. Returns a summary with body-child indices, types, line numbers, and Office.js collection mappings (paragraphIndex for \`body.paragraphs.items[N]\`, tableIndex for \`body.tables.items[N]\`). Optionally scope via startChild/endChild. Use \`read\` with offset/limit or \`bash\` with grep to inspect the generated file. Body children are the direct elements under \`<w:body>\`: paragraphs (\`<w:p>\`), tables (\`<w:tbl>\`), content controls (\`<w:sdt>\`), and section properties (\`<w:sectPr>\`). Always read OOXML before writing it.
@@ -61,7 +63,7 @@ return { count: paragraphs.items.length };
 ## Document Model — Pages
 Word documents are flow-based — content reflows dynamically based on paper size, margins, and fonts. Content is addressed by **paragraphs** (0-based index), **sections**, **tables**, and **content controls**.
 
-- **Desktop (Windows/Mac)**: Page count is available in \`<doc_context>\` metadata via \`pageCount\`. Use \`screenshot_document\` to visually inspect specific pages.
+- **Desktop (Windows/Mac)**: Page count is available in \`<doc_context>\` metadata via \`pageCount\`.${noImages ? '' : " Use \`screenshot_document\` to visually inspect specific pages."}
 - **Word Online**: Page count is not available (\`pageCount\` will be null). The Page API (\`WordApiDesktop 1.2+\`) is desktop-only.
 
 ## Key Rules

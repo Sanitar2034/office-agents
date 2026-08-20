@@ -58,6 +58,7 @@
   let temperature = $state<string>(
     typeof saved?.temperature === "number" ? String(saved.temperature) : "",
   );
+  let supportsImages = $state(saved?.supportsImages !== false);
 
   // model list loading for custom endpoints (incl. Open WebUI preset)
   let availableModels = $state<string[]>([]);
@@ -218,6 +219,7 @@
       contextLimit: number;
       autoCompact: boolean;
       temperature: number | string | undefined;
+      supportsImages: boolean;
     }>,
   ) {
     const nextProvider = updates.provider ?? provider;
@@ -233,6 +235,7 @@
       ? Math.max(0, Math.floor(updates.contextLimit ?? contextLimit))
       : 0;
     const nextAutoCompact = updates.autoCompact ?? autoCompact;
+    const nextSupportsImages = updates.supportsImages ?? supportsImages;
     const parsedTemperature = Number.parseFloat(
       String(updates.temperature ?? temperature).trim(),
     );
@@ -254,6 +257,7 @@
     authMethod = nextAuthMethod;
     contextLimit = nextContextLimit;
     autoCompact = nextAutoCompact;
+    supportsImages = nextSupportsImages;
     if (updates.temperature !== undefined) {
       // keep the raw string while typing (empty or partially numeric);
       // the saved config stays undefined until the value fully parses
@@ -287,6 +291,7 @@
       expandToolCalls,
       contextLimit: nextContextLimit,
       autoCompact: nextAutoCompact,
+      supportsImages: nextSupportsImages,
       ...(nextTemperature !== undefined ? { temperature: nextTemperature } : {}),
       apiType: nextApiType,
       customBaseUrl: nextCustomBaseUrl,
@@ -957,6 +962,22 @@
         <p class="text-[10px] text-(--chat-text-muted) mt-1">
           Extended thinking for supported models
         </p>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs text-(--chat-text-secondary)">
+            Model supports images (vision)
+          </span>
+          <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
+            Off — screenshot tools and image analysis are hidden
+          </p>
+        </div>
+        {@render toggleSwitch(
+          supportsImages,
+          () => updateAndSync({ supportsImages: !supportsImages }),
+          supportsImages ? "Disable image support" : "Enable image support",
+        )}
       </div>
 
       <div>

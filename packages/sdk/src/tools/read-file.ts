@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { AgentContext } from "../context";
 import { resizeImage } from "../image-resize";
+import { loadSavedConfig } from "../provider-config";
 import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -63,6 +64,19 @@ export function createReadTool(ctx: AgentContext) {
         const { isImage, mimeType } = getFileType(filename);
 
         if (isImage) {
+          if (
+            loadSavedConfig(ctx.namespace)?.supportsImages === false
+          ) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `${filename}: image content not returned — the current model has no image support (see Settings).`,
+                },
+              ],
+              details: undefined,
+            };
+          }
           const data = await ctx.readFileBuffer(fullPath);
           const actualMimeType = detectImageMimeType(data, mimeType);
           const base64 = toBase64(data);
