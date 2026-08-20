@@ -161,16 +161,21 @@ for JS ops before ExcelApi 1.20 — build our own rollback of agent edits:
 - [x] Multi-chats & history: already implemented upstream (sessions dropdown,
       per-document IndexedDB persistence) — no work needed
 
-### COM-brokered desktop power via the offline PowerShell server (xlwings pattern)
+### COM-brokered desktop power — OPTIONAL add-on layer (user decision 2026-08-20)
 Research 2026-08-20: Office.js has NO Power Query create/M-edit/refresh and NO VBA
 APIs (through ExcelApi 1.21); COM Workbook.Queries + Application.Run do it all.
-Bridge: server endpoints (like /oa-config) that attach to the RUNNING Excel via
-GetActiveObject("Excel.Application") and act on the live workbook:
-- [ ] POST /oa-com/pq-list | pq-edit (Queries.Add / WorkbookQuery.Formula) |
-      pq-refresh-all (with background-refresh completion wait)
-- [ ] POST /oa-com/run-macro (Application.Run; document MOTW/Trusted-Location caveats)
-- [ ] Excel agent tools pq_* / run_macro calling these endpoints same-origin
-- [ ] System prompt section describing desktop-power tools (desktop Excel only)
-Constraints: interactive user session only; Excel must be running; handle
-EXCEL.EXE process hygiene; Power BI stays cloud-only (REST executeQueries /
-XMLA via PS if ever online — not part of the offline core)
+DESIGN DECISION: Office.js tools stay the PRIMARY interaction path (works on
+every host incl. Excel Online); the COM bridge is an opt-in extension, OFF by
+default, never a dependency of core flows.
+- [ ] Settings toggle "Desktop power tools (COM bridge)" — off by default;
+      agent tools pq_* / run_macro are registered ONLY when enabled AND the
+      bridge reports healthy (GET /oa-com/status: Excel reachable via
+      GetActiveObject, interactive session)
+- [ ] Server endpoints (like /oa-config): POST /oa-com/pq-list | pq-edit
+      (Queries.Add / WorkbookQuery.Formula) | pq-refresh-all (with completion
+      wait) | run-macro (Application.Run) — served only when enabled
+- [ ] System prompt mentions desktop-power tools only when they are active
+Constraints: interactive user session only; MOTW blocks macros
+(Unblock-File / Trusted Locations — document!); EXCEL.EXE hygiene; Power BI
+stays cloud-only (REST executeQueries / XMLA via PS if ever online — not part
+of the offline core)
