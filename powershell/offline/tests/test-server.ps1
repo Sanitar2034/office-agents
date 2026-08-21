@@ -170,6 +170,24 @@ try {
     Assert 'pbi bridge: 400 unknown action' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/bridge' '{"action":"nope"}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
 
     $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
+
+    # === WORD COM (inside try - server still running) ===
+    Assert 'word com: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/word' '{"action":"get_text"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'word com: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/word' '{"action":"get_text"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    Assert 'word com: 400 unknown action' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/word' '{"action":"nope"}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
+    Assert 'word com: agent contract (200 json)' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/word' '{"action":"get_text"}' @{ Origin = 'https://localhost:3000' }).Code -eq 200)
+    Assert 'word com: get_stats contract' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/word' '{"action":"get_stats"}' @{ Origin = 'https://localhost:3000' }).Code -eq 200)
+    Assert 'word com: find_replace contract' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/word' '{"action":"find_replace","find":"x","replace":"y"}' @{ Origin = 'https://localhost:3000' }).Code -eq 200)
+
+    # === PPT COM ===
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
+    Assert 'ppt com: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/ppt' '{"action":"list_slides"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'ppt com: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/ppt' '{"action":"list_slides"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    Assert 'ppt com: 400 unknown action' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/ppt' '{"action":"nope"}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
+    Assert 'ppt com: agent contract (200 json)' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/ppt' '{"action":"list_slides"}' @{ Origin = 'https://localhost:3000' }).Code -eq 200)
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
 }
 finally {
     if ($null -ne $cfgBackup) { Set-Content -LiteralPath $cfgFile -Value $cfgBackup -NoNewline -Encoding UTF8 }

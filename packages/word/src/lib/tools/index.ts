@@ -6,6 +6,8 @@ import { getDocumentTextTool } from "./get-document-text";
 import { createGetOoxmlTool } from "./get-ooxml";
 import { screenshotDocumentTool } from "./screenshot-document";
 
+import { createWordComTool } from "./word-com";
+
 export function createWordTools(ctx: AgentContext) {
   return [
     // fs tools
@@ -18,6 +20,7 @@ export function createWordTools(ctx: AgentContext) {
     createGetOoxmlTool(ctx),
     // Word write tools
     createExecuteOfficeJsTool(ctx),
+    createWordComTool(),
   ];
 }
 
