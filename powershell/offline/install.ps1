@@ -1,4 +1,4 @@
-# install.ps1 - one-time per-user setup on the target (offline) machine.
+﻿# install.ps1 - one-time per-user setup on the target (offline) machine.
 # No admin rights required. Does three things:
 #   1. Creates a self-signed "localhost" certificate in the CURRENT USER store.
 #   2. Marks that certificate as trusted (CURRENT USER Root store - Windows will
@@ -83,7 +83,7 @@ if (-not $CertsOnly) {
     if (-not (Test-Path (Join-Path $manifestsDir '*.xml'))) {
         throw "no manifest files found in $manifestsDir"
     }
-    Write-Host "[3/3] Registering trusted add-in catalog: $manifestsDir" -ForegroundColor Yellow
+    Write-Host "[3/5] Registering trusted add-in catalog: $manifestsDir" -ForegroundColor Yellow
     $regBase = 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs'
     $regKey = Join-Path $regBase $catalogGuid
     if (-not (Test-Path $regBase)) { New-Item -Path $regBase -Force | Out-Null }
@@ -92,15 +92,48 @@ if (-not $CertsOnly) {
     Set-ItemProperty -Path $regKey -Name 'Url' -Value $manifestsDir -Type String
     Set-ItemProperty -Path $regKey -Name 'Flags' -Value 1 -Type DWord
     Write-Host '      done (per-user, no admin)' -ForegroundColor Green
+
+    # --- 4. AUTO-LOAD registration (WEF\Developer — what npm start uses) ---
+    # This makes the add-in load automatically when Office starts,
+    # without the user having to go to Insert → Get Add-ins → Add.
+    # Same mechanism as office-addin-dev-settings (Microsoft's own tooling).
+    Write-Host '[4/5] Auto-load registration (add-ins start with Office):' -ForegroundColor Yellow
+    $devKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
+    if (-not (Test-Path $devKey)) { New-Item -Path $devKey -Force | Out-Null }
+    $registered = 0
+    foreach ($mf in (Get-ChildItem (Join-Path $manifestsDir '*.xml'))) {
+        try {
+            [xml]$manifest = Get-Content $mf.FullName -Raw
+            $addinId = $manifest.OfficeApp.Id
+            if ($addinId) {
+                New-ItemProperty -Path $devKey -Name $addinId -Value $mf.FullName `
+                    -PropertyType String -Force | Out-Null
+                Write-Host "      $($manifest.OfficeApp.Id.Substring(0,8))... -> $($mf.Name)" -ForegroundColor Green
+                $registered++
+            }
+        } catch {
+            Write-Host "      WARNING: could not parse $($mf.Name)" -ForegroundColor Yellow
+        }
+    }
+    # Force Office to re-read registrations on next start
+    New-ItemProperty -Path $devKey -Name 'RefreshAddins' -Value 1 -PropertyType DWord -Force | Out-Null
+    Write-Host "      $registered add-in(s) will auto-load on Office start" -ForegroundColor Green
+
+    # --- 5. Taskpane auto-open hint ----------------------------------------
+    Write-Host '[5/5] Taskpane auto-open:' -ForegroundColor Yellow
+    Write-Host '      The add-ins will appear in the ribbon automatically.' -ForegroundColor Green
+    Write-Host '      To auto-OPEN the taskpane, call this once in the add-in:' -ForegroundColor DarkGray
+    Write-Host '      Office.addin.setStartupBehavior(Office.StartupBehavior.load)' -ForegroundColor DarkGray
 }
 
 Write-Host ''
-Write-Host 'Setup complete. Next steps:' -ForegroundColor Cyan
-Write-Host '  1. Run start.ps1 - it starts the PowerShell HTTPS server.'
-Write-Host '  2. Open Word/Excel/PowerPoint:'
-Write-Host '     Insert (or Add-ins) -> Get Add-ins / My Add-ins -> SHARED FOLDER'
-Write-Host '     -> pick "OpenWord" / "OpenExcel" / "OpenPPT" -> Add.'
-Write-Host '  3. In the add-in Settings choose a custom OpenAI-compatible endpoint.'
-Write-Host '     To reach an HTTP LLM server use the built-in same-origin proxy:'
-Write-Host '       https://localhost:3000/llm-proxy/v1   (maps to server-config.json target)'
+Write-Host 'Setup complete. The add-ins will load automatically when you start' -ForegroundColor Cyan
+Write-Host 'Excel/Word/PowerPoint — no manual Insert → Add needed.' -ForegroundColor Cyan
+Write-Host ''
+Write-Host '  1. Run start.ps1 to start the HTTPS server.'
+Write-Host '  2. Open Excel/Word/PowerPoint — add-ins appear in the ribbon.'
+Write-Host '  3. If the taskpane does not open, click the ribbon button once.'
+Write-Host ''
+Write-Host 'LLM endpoint (Settings inside the add-in):' -ForegroundColor Cyan
+Write-Host '  https://localhost:300X/llm-proxy/v1   (X = 0 Excel, 1 PPT, 2 Word)'
 Write-Host ''

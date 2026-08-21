@@ -13,6 +13,33 @@ if (Test-Path $regKey) {
     Write-Host 'catalog entry not found (nothing to do)'
 }
 
+# 1b. auto-load registrations (WEF\Developer)
+$devKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
+if (Test-Path $devKey) {
+    $manifestsDir = Join-Path $PSScriptRoot 'manifests'
+    $removed = 0
+    foreach ($mf in (Get-ChildItem (Join-Path $manifestsDir '*.xml') -ErrorAction SilentlyContinue)) {
+        try {
+            [xml]$manifest = Get-Content $mf.FullName -Raw
+            $addinId = $manifest.OfficeApp.Id
+            if ($addinId -and (Get-ItemProperty -Path $devKey -Name $addinId -ErrorAction SilentlyContinue)) {
+                Remove-ItemProperty -Path $devKey -Name $addinId -Force
+                $removed++
+            }
+        } catch { }
+    }
+    if ($removed -gt 0) { Write-Host "removed $removed auto-load registration(s)" -ForegroundColor Green }
+    # Remove RefreshAddins + the key itself if empty
+    $remaining = (Get-Item $devKey -ErrorAction SilentlyContinue).Property |
+        Where-Object { $_ -ne 'PSPath' -and $_ -ne 'PSParentPath' -and $_ -ne 'PSChildName' -and $_ -ne 'PSDrive' -and $_ -ne 'PSProvider' }
+    if (-not $remaining) {
+        Remove-Item $devKey -Force -ErrorAction SilentlyContinue
+        Write-Host 'removed WEF\Developer key (empty)' -ForegroundColor Green
+    } else {
+        Remove-ItemProperty -Path $devKey -Name 'RefreshAddins' -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # 2. certificate from Root + My
 $certs = Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue |
     Where-Object { $_.FriendlyName -eq $certFriendlyName }
