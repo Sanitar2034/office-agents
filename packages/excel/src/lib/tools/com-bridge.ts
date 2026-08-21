@@ -75,6 +75,13 @@ export function createComBridgeTool() {
             formula: params.formula,
           }),
         });
+        if (res.status === 503) {
+          return toolSuccess({
+            success: false,
+            disabled: true,
+            error: "COM bridge is disabled — enable 'Desktop power tools' in Settings.",
+          });
+        }
         const data = (await res.json()) as { enabled?: boolean };
         if (action === "status" && data.enabled === false) {
           return toolSuccess({
