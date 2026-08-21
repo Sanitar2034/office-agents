@@ -32,6 +32,7 @@ if ($Enable) {
     Write-Host "Autostart ENABLED: the server starts at Windows logon." -ForegroundColor Green
     Write-Host "  command: $command" -ForegroundColor DarkGray
     Write-Host "  log:      $logPath (rewritten on each start)" -ForegroundColor DarkGray
+    Write-Host '  stop:     Task Manager -> Windows PowerShell (the one on ports 3000-3002)' -ForegroundColor DarkGray
     exit 0
 }
 

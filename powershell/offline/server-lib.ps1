@@ -1115,7 +1115,10 @@ function Handle-OaConnection {
         $Client.SendTimeout = 600000
         $ssl = New-Object Net.Security.SslStream($Client.GetStream(), $false)
         try {
-            $ssl.AuthenticateAsServer($Cert, $false, [System.Security.Authentication.SslProtocols]::None, $false)
+            # explicit Tls12 instead of SslProtocols::None (system default):
+            # deterministic regardless of machine-wide TLS registry settings;
+            # WebView2 and modern clients always speak TLS 1.2
+            $ssl.AuthenticateAsServer($Cert, $false, [System.Security.Authentication.SslProtocols]::Tls12, $false)
         } catch {
             return "tls handshake failed: $($_.Exception.Message)"
         }
