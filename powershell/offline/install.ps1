@@ -136,5 +136,5 @@ Write-Host '     After that the pane is pinned per document and re-opens by itse
 Write-Host '     (setStartupBehavior), surviving restarts.'
 Write-Host ''
 Write-Host 'LLM endpoint (Settings inside the add-in):' -ForegroundColor Cyan
-Write-Host '  https://localhost:300X/llm-proxy/v1   (X = 0 Excel, 1 PPT, 2 Word)'
+Write-Host '  https://localhost:1813X/llm-proxy/v1   (X = 1 Excel, 2 PPT, 3 Word)'
 Write-Host ''

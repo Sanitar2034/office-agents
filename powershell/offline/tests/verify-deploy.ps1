@@ -115,10 +115,10 @@ Assert "autostart.ps1 exists next to the server" (
 $maps = Get-ChildItem $site -Recurse -Filter '*.map'
 Assert "no .map files shipped" ($maps.Count -eq 0)
 
-# 5) manifests still point at localhost:3000-3002
+# 5) manifests still point at localhost:18131-18133
 foreach ($m in 'excel-manifest.xml', 'powerpoint-manifest.xml', 'word-manifest.xml') {
     $c = Get-Content (Join-Path $root "manifests\$m") -Raw
-    Assert "$m points to localhost:300x" ($c -match 'https://localhost:300[0-2]')
+    Assert "$m points to localhost:1813x" ($c -match 'https://localhost:1813[1-3]')
     # a Requirements gate that the host doesn't support makes the add-in
     # activate silently nowhere (observed on Word/PPT); Excel ships without one
     Assert "$m has no <Requirements> activation gate" ($c -notmatch '<Requirements>')
@@ -128,11 +128,11 @@ foreach ($m in 'excel-manifest.xml', 'powerpoint-manifest.xml', 'word-manifest.x
 #    (a 404 icon makes Word/PowerPoint refuse to activate the add-in)
 foreach ($m in 'excel-manifest.xml', 'powerpoint-manifest.xml', 'word-manifest.xml') {
     $c = Get-Content (Join-Path $root "manifests\$m") -Raw
-    $icons = [regex]::Matches($c, 'https://localhost:300\d(/assets/[a-z0-9\.\-]+\.png)') |
+    $icons = [regex]::Matches($c, 'https://localhost:1813\d(/assets/[a-z0-9\.\-]+\.png)') |
         ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
     foreach ($i in $icons) {
         # map port -> site dir
-        $app = if ($c -match '3001') { 'powerpoint' } elseif ($c -match '3002') { 'word' } else { 'excel' }
+        $app = if ($c -match '18132') { 'powerpoint' } elseif ($c -match '18133') { 'word' } else { 'excel' }
         Assert "$m icon $i exists in site/$app" (Test-Path (Join-Path $site "$app$i"))
     }
 }

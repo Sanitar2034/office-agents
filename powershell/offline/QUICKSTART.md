@@ -23,7 +23,7 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1              # сервер
 powershell -ExecutionPolicy Bypass -File .\start.ps1 -Launch excel   # сервер + Excel
 ```
 
-Сервер слушает только localhost: **3000** — Excel, **3001** — PowerPoint, **3002** — Word.
+Сервер слушает только localhost: **18131** — Excel, **18132** — PowerPoint, **18133** — Word.
 Держите окно сервера открытым, пока работаете с аддинами.
 
 **Автозапуск при входе в Windows** (Run-ключ HKCU, без прав администратора):
@@ -72,7 +72,7 @@ Office. Полное удаление всего (каталог, серт, dev-
 (кнопка «setup notes» в настройках показывает, как включить CORS для vLLM,
 llama.cpp, Ollama). Для HTTP-only серверов (Ollama, LM Studio) не подходит.
 
-**Local Proxy** — аддин ходит на свой же origin (`https://localhost:300X/llm-proxy/v1`),
+**Local Proxy** — аддин ходит на свой же origin (`https://localhost:1813X/llm-proxy/v1`),
 а офлайн-сервер перенаправляет запросы на LLM-бэкенд. Подходит для обычных
 HTTP-бэкендов, CORS не нужен. Адрес бэкенда настраивается прямо из настроек
 аддина: введите его в поле «LLM backend address» и нажмите Save — сервер
@@ -84,9 +84,9 @@ HTTP-бэкендов, CORS не нужен. Адрес бэкенда наст�
 
 | Приложение  | Base URL (режим Local Proxy)          |
 |-------------|---------------------------------------|
-| Excel       | `https://localhost:3000/llm-proxy/v1` |
-| PowerPoint  | `https://localhost:3001/llm-proxy/v1` |
-| Word        | `https://localhost:3002/llm-proxy/v1` |
+| Excel       | `https://localhost:18131/llm-proxy/v1` |
+| PowerPoint  | `https://localhost:18132/llm-proxy/v1` |
+| Word        | `https://localhost:18133/llm-proxy/v1` |
 
 Модель — развёрнутая на сервере; ключ обычно не нужен. Стриминг токенов
 сохраняется в обоих режимах.
@@ -133,15 +133,15 @@ HTTP-бэкендов, CORS не нужен. Адрес бэкенда наст�
   сервер и mock-LLM, 11 проверок — статика на 3 портах, локальный office.js,
   oa-config (GET / защита Origin / валидация URL), llm-proxy со стримингом,
   подсказка на устаревший чанк, защита от обхода каталога. Нужны node и
-  однократный `install.ps1`; порты 3000–3002 должны быть свободны.
+  однократный `install.ps1`; порты 18131–18133 должны быть свободны.
 - **Верификация деплоя (`offline	estserify-deploy.ps1`):** после
   `build-package.ps1` — 29 проверок: локальный office.js без CDN-ссылок,
   фичи в бандлах всех трёх приложений, sourcemaps не отгружены, манифесты
-  указывают на localhost:300x.
+  указывают на localhost:1813x.
 
 ## Проверка и типовые проблемы
 
-- `https://localhost:3000/taskpane.html` должен открыться в Edge без предупреждений
+- `https://localhost:18131/taskpane.html` должен открыться в Edge без предупреждений
   о сертификате. Предупреждение → переустановите доверие: `.\install.ps1`.
 - Панель пустая/не открывается → сервер запущен? Каталог добавлен до запуска Office?
   Перезапустите приложение после `install.ps1`.

@@ -739,9 +739,9 @@
             {#if showDirectHelp}
               <div class="mt-1 p-2 border border-(--chat-border) text-[10px] text-(--chat-text-muted) space-y-1" style="border-radius: var(--chat-radius)">
                 <p><b>vLLM</b>: HTTPS via <code>--ssl-certfile</code>/<code>--ssl-key-file</code>; allow taskpanes with
-                  <code>--allowed-origins '["https://localhost:3000","https://localhost:3001","https://localhost:3002"]'</code></p>
+                  <code>--allowed-origins '["https://localhost:18131","https://localhost:18132","https://localhost:18133"]'</code></p>
                 <p><b>llama.cpp (llama-server)</b>: CORS is permissive by default; for HTTPS put it behind a TLS reverse proxy</p>
-                <p><b>Ollama</b>: HTTP only by default — use Local Proxy, or a TLS reverse proxy with <code>OLLAMA_ORIGINS=https://localhost:3000,https://localhost:3001,https://localhost:3002</code></p>
+                <p><b>Ollama</b>: HTTP only by default — use Local Proxy, or a TLS reverse proxy with <code>OLLAMA_ORIGINS=https://localhost:18131,https://localhost:18132,https://localhost:18133</code></p>
                 <p><b>LM Studio</b>: HTTP only — use Local Proxy</p>
                 <p>Self-signed certificates must be trusted in the current user's Windows certificate store, otherwise the taskpane will reject them — or use Local Proxy.</p>
               </div>

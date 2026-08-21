@@ -1,5 +1,5 @@
 # test-com-live.ps1 - LIVE test of the COM bridge against the RUNNING Excel.
-# Uses the running offline server (https://localhost:3000) and the user's
+# Uses the running offline server (https://localhost:18131) and the user's
 # Excel instance. Creates a temporary workbook (never saved, closed with
 # SaveChanges=false), so the user's work is untouched.
 # Usage: powershell -ExecutionPolicy Bypass -File tests\test-com-live.ps1
@@ -30,7 +30,7 @@ function Http($method, $url, $body = $null) {
     $req.Method = $method
     $req.Timeout = 60000
     $req.Proxy = $null
-    $req.Headers['Origin'] = 'https://localhost:3000'
+    $req.Headers['Origin'] = 'https://localhost:18131'
     if ($body) {
         $bytes = [Text.Encoding]::UTF8.GetBytes($body)
         $req.ContentType = 'application/json'
@@ -51,19 +51,19 @@ function Http($method, $url, $body = $null) {
 Write-Host "== COM bridge LIVE test (running Excel + offline server) ==" -ForegroundColor Cyan
 
 # 0) server must be up
-if ((Http 'GET' 'https://127.0.0.1:3000/taskpane.html').Code -ne 200) {
+if ((Http 'GET' 'https://127.0.0.1:18131/taskpane.html').Code -ne 200) {
     Write-Host "Offline server is not running (start.ps1)." -ForegroundColor Red; exit 1
 }
 
 # 1) remember the toggle, enable the bridge
-$before = (Http 'GET' 'https://127.0.0.1:3000/oa-config/com-bridge').Text
+$before = (Http 'GET' 'https://127.0.0.1:18131/oa-config/com-bridge').Text
 $wasEnabled = $before -match '"enabled":true'
-$null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}'
+$null = Http 'POST' 'https://127.0.0.1:18131/oa-config/com-bridge' '{"enabled":true}'
 
 $excel = $null; $wb = $null
 try {
     # 2) status: Excel must be running
-    $st = Http 'POST' 'https://127.0.0.1:3000/oa-com/status'
+    $st = Http 'POST' 'https://127.0.0.1:18131/oa-com/status'
     Assert 'status 200 + excelRunning' ($st.Code -eq 200 -and $st.Text -match '"excelRunning":true')
     if ($st.Text -notmatch '"excelRunning":true') {
         Write-Host "Excel is not running - start Excel with a workbook and rerun." -ForegroundColor Yellow
@@ -76,26 +76,26 @@ try {
         Write-Host "  temp workbook: $wbName (will be closed without saving)"
 
         # 4) pq-edit: create
-        $mk = Http 'POST' 'https://127.0.0.1:3000/oa-com/pq-edit' '{"name":"oa_live_test_q","formula":"let x = 40 + 2 in x"}'
+        $mk = Http 'POST' 'https://127.0.0.1:18131/oa-com/pq-edit' '{"name":"oa_live_test_q","formula":"let x = 40 + 2 in x"}'
         Assert 'pq-edit created' ($mk.Code -eq 200 -and $mk.Text -match '"ok":true' -and $mk.Text -match 'created')
 
         # 5) pq-list: contains it
-        $ls = Http 'POST' 'https://127.0.0.1:3000/oa-com/pq-list'
+        $ls = Http 'POST' 'https://127.0.0.1:18131/oa-com/pq-list'
         Assert 'pq-list contains the query' ($ls.Code -eq 200 -and $ls.Text -match 'oa_live_test_q')
 
         # 6) pq-edit: update
-        $up = Http 'POST' 'https://127.0.0.1:3000/oa-com/pq-edit' '{"name":"oa_live_test_q","formula":"let x = 43 in x"}'
+        $up = Http 'POST' 'https://127.0.0.1:18131/oa-com/pq-edit' '{"name":"oa_live_test_q","formula":"let x = 43 in x"}'
         Assert 'pq-edit updated' ($up.Code -eq 200 -and $up.Text -match 'updated')
 
         # 7) pq-refresh-all completes
-        $rf = Http 'POST' 'https://127.0.0.1:3000/oa-com/pq-refresh-all'
+        $rf = Http 'POST' 'https://127.0.0.1:18131/oa-com/pq-refresh-all'
         Assert 'pq-refresh-all ok' ($rf.Code -eq 200 -and $rf.Text -match '"ok":true')
     }
 }
 finally {
     if ($wb) { $wb.Close($false) }           # discard temp workbook
     if (-not $wasEnabled) {
-        $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}'
+        $null = Http 'POST' 'https://127.0.0.1:18131/oa-config/com-bridge' '{"enabled":false}'
     }
 }
 

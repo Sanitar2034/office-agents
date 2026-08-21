@@ -25,7 +25,7 @@ function Assert($name, $cond) {
 function Http($method, $url, $body = $null) {
     $req = [System.Net.HttpWebRequest]::Create($url)
     $req.Method = $method; $req.Timeout = 90000; $req.Proxy = $null
-    $req.Headers['Origin'] = 'https://localhost:3000'
+    $req.Headers['Origin'] = 'https://localhost:18131'
     if ($body) {
         $bytes = [Text.Encoding]::UTF8.GetBytes($body)
         $req.ContentType = 'application/json'; $req.ContentLength = $bytes.Length
@@ -43,16 +43,16 @@ function Http($method, $url, $body = $null) {
 }
 
 Write-Host "== PBI bridge LIVE test (needs open .pbix) ==" -ForegroundColor Cyan
-if ((Http 'GET' 'https://127.0.0.1:3000/taskpane.html').Code -ne 200) {
+if ((Http 'GET' 'https://127.0.0.1:18131/taskpane.html').Code -ne 200) {
     Write-Host "Offline server is not running (start.ps1)." -ForegroundColor Red; exit 1
 }
 
-$before = (Http 'GET' 'https://127.0.0.1:3000/oa-config/com-bridge').Text
+$before = (Http 'GET' 'https://127.0.0.1:18131/oa-config/com-bridge').Text
 $wasEnabled = $before -match '"enabled":true'
-$null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}'
+$null = Http 'POST' 'https://127.0.0.1:18131/oa-config/com-bridge' '{"enabled":true}'
 
 try {
-    $st = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/status'
+    $st = Http 'POST' 'https://127.0.0.1:18131/oa-pbi/status'
     Assert 'status 200' ($st.Code -eq 200)
     if ($st.Text -notmatch '"pbiRunning":true') {
         Write-Host "SKIPPED: Power BI Desktop is not running (open a .pbix and rerun)." -ForegroundColor Yellow
@@ -60,21 +60,21 @@ try {
     }
     Write-Host "  local engine port: $($st.Text -replace '.*\"port\":([0-9]+).*','$1')"
 
-    $q1 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE ROW(\"probe\", 1+1)"}'
+    $q1 = Http 'POST' 'https://127.0.0.1:18131/oa-pbi/dax' '{"query":"EVALUATE ROW(\"probe\", 1+1)"}'
     Assert 'dax scalar query ok:true' ($q1.Code -eq 200 -and $q1.Text -match '"ok":true')
     Assert 'dax result contains 2' ($q1.Text -match '\b2\b')
 
-    $q2 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE {1,2,3}"}'
+    $q2 = Http 'POST' 'https://127.0.0.1:18131/oa-pbi/dax' '{"query":"EVALUATE {1,2,3}"}'
     Assert 'dax table query rowCount 3' ($q2.Code -eq 200 -and $q2.Text -match '"rowCount":3')
 
     # NB: on an EMPTY model the engine may return an empty rowset instead of
     # an error; both outcomes mean "no data" and are agent-safe.
-    $q3 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE DefinitelyNotATable"}'
+    $q3 = Http 'POST' 'https://127.0.0.1:18131/oa-pbi/dax' '{"query":"EVALUATE DefinitelyNotATable"}'
     Assert 'bad dax -> ok:false or empty rowset' ($q3.Code -eq 200 -and ($q3.Text -match '"ok":false' -or $q3.Text -match '"rowCount":0'))
 }
 finally {
     if (-not $wasEnabled) {
-        $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}'
+        $null = Http 'POST' 'https://127.0.0.1:18131/oa-config/com-bridge' '{"enabled":false}'
     }
 }
 

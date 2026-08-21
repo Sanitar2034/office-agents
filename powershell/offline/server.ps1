@@ -1,9 +1,9 @@
 # server.ps1 - offline HTTPS static server for office-agents add-ins.
 # Pure Windows PowerShell 5.1, no admin rights, no http.sys (uses TcpListener + SslStream).
 # Serves:
-#   https://localhost:3000  -> site/excel        (Excel add-in)
-#   https://localhost:3001  -> site/powerpoint   (PowerPoint add-in)
-#   https://localhost:3002  -> site/word         (Word add-in)
+#   https://localhost:18131  -> site/excel        (Excel add-in)
+#   https://localhost:18132  -> site/powerpoint   (PowerPoint add-in)
+#   https://localhost:18133  -> site/word         (Word add-in)
 #   /office-js/*            -> office-js/        (vendored Office.js, replaces the CDN)
 #   /llm-proxy/*            -> forwarded to $LlmProxyTarget (OpenAI-compatible LLM server)
 #                               same-origin proxy avoids CORS and HTTPS->HTTP mixed content.
@@ -58,9 +58,9 @@ Write-Host "Using certificate: $($cert.Subject) (expires $($cert.NotAfter.ToStri
 
 # listeners: port -> site dir (string keys: ordered-dictionary int keys resolve by position)
 $portMap = [ordered]@{
-    '3000' = (Join-Path $siteRoot 'excel')
-    '3001' = (Join-Path $siteRoot 'powerpoint')
-    '3002' = (Join-Path $siteRoot 'word')
+    '18131' = (Join-Path $siteRoot 'excel')
+    '18132' = (Join-Path $siteRoot 'powerpoint')
+    '18133' = (Join-Path $siteRoot 'word')
 }
 
 # duplicate-launch guard: if an instance already owns one of our ports,
@@ -97,7 +97,7 @@ foreach ($p in $portMap.Keys) {
     Write-Host "Listening on https://$BindAddress`:$portNum/  ->  $($portMap[$p])"
 }
 if ($LlmProxyTarget) {
-    Write-Host "LLM proxy:  https://$BindAddress`:3000..3002/llm-proxy/*  ->  $LlmProxyTarget" -ForegroundColor Cyan
+    Write-Host "LLM proxy:  https://$BindAddress`:18131..18133/llm-proxy/*  ->  $LlmProxyTarget" -ForegroundColor Cyan
 } else {
     Write-Host 'LLM proxy disabled (set -LlmProxyTarget http://host:port or server-config.json)' -ForegroundColor DarkGray
 }

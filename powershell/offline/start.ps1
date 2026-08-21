@@ -46,12 +46,12 @@ switch ($Launch) {
 }
 
 Write-Host ''
-Write-Host 'Server:      https://localhost:3000 (Excel), 3001 (PowerPoint), 3002 (Word)' -ForegroundColor Cyan
+Write-Host 'Server:      https://localhost:18131 (Excel), 18132 (PowerPoint), 18133 (Word)' -ForegroundColor Cyan
 if ($Launch -ne 'none') { Write-Host 'Office apps launched.' }
 Write-Host 'Insert once: Insert -> My Add-ins -> SHARED FOLDER -> Add.' -ForegroundColor Cyan
 Write-Host 'After that the taskpane is pinned per document and re-opens by itself.'
 Write-Host 'LLM settings inside the add-in (Settings -> custom endpoint):' -ForegroundColor Cyan
-Write-Host '  https://localhost:3000/llm-proxy/v1   (Excel taskpane)'
-Write-Host '  https://localhost:3002/llm-proxy/v1   (Word taskpane)'
+Write-Host '  https://localhost:18131/llm-proxy/v1   (Excel taskpane)'
+Write-Host '  https://localhost:18133/llm-proxy/v1   (Word taskpane)'
 Write-Host '  backend address: -LlmProxyTarget param or server-config.json (see QUICKSTART.md)'
 Write-Host ''
