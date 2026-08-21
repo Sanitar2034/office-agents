@@ -93,11 +93,11 @@ if (-not $CertsOnly) {
     Set-ItemProperty -Path $regKey -Name 'Flags' -Value 1 -Type DWord
     Write-Host '      done (per-user, no admin)' -ForegroundColor Green
 
-    # --- 4. AUTO-LOAD registration (WEF\Developer — what npm start uses) ---
-    # This makes the add-in load automatically when Office starts,
-    # without the user having to go to Insert → Get Add-ins → Add.
-    # Same mechanism as office-addin-dev-settings (Microsoft's own tooling).
-    Write-Host '[4/5] Auto-load registration (add-ins start with Office):' -ForegroundColor Yellow
+    # --- 4. dev registration (WEF\Developer — what office-addin-dev-settings uses) ---
+    # In some Office builds this makes the add-in button appear on the ribbon
+    # at startup; the reliable path is inserting once from the shared-folder
+    # catalog - the pane then stays pinned per document (setStartupBehavior).
+    Write-Host '[4/5] Dev add-in registration (WEF\Developer):' -ForegroundColor Yellow
     $devKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
     if (-not (Test-Path $devKey)) { New-Item -Path $devKey -Force | Out-Null }
     $registered = 0
@@ -117,7 +117,7 @@ if (-not $CertsOnly) {
     }
     # Force Office to re-read registrations on next start
     New-ItemProperty -Path $devKey -Name 'RefreshAddins' -Value 1 -PropertyType DWord -Force | Out-Null
-    Write-Host "      $registered add-in(s) will auto-load on Office start" -ForegroundColor Green
+    Write-Host "      $registered add-in(s) registered" -ForegroundColor Green
 
     # --- 5. Taskpane auto-open (built into the bundles) ---------------------
     # The taskpane entrypoints call Office.addin.setStartupBehavior(load)
@@ -127,13 +127,12 @@ if (-not $CertsOnly) {
 }
 
 Write-Host ''
-Write-Host 'Setup complete. The add-ins will load automatically when you start' -ForegroundColor Cyan
-Write-Host 'Excel/Word/PowerPoint — no manual Insert → Add needed.' -ForegroundColor Cyan
+Write-Host 'Setup complete.' -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  1. Run start.ps1 to start the HTTPS server.'
-Write-Host '  2. Open Excel/Word/PowerPoint — add-ins appear in the ribbon.'
-Write-Host '  3. The taskpane re-opens by itself in every document where it was'
-Write-Host '     opened once (pin via setStartupBehavior, survives restarts).'
+Write-Host '  2. Insert once per app: Insert -> My Add-ins -> SHARED FOLDER -> Add.'
+Write-Host '     After that the pane is pinned per document and re-opens by itself'
+Write-Host '     (setStartupBehavior), surviving restarts.'
 Write-Host ''
 Write-Host 'LLM endpoint (Settings inside the add-in):' -ForegroundColor Cyan
 Write-Host '  https://localhost:300X/llm-proxy/v1   (X = 0 Excel, 1 PPT, 2 Word)'

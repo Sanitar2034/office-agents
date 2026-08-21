@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
   <Id>2ce041d0-e69c-4739-9d01-e31855baf78f</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.0.1</Version>
   <ProviderName>Contoso</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="OpenPPT (Dev)"/>
@@ -14,13 +14,7 @@
   </AppDomains>
   <Hosts>
     <Host Name="Presentation"/>
-  </Hosts>
-  <Requirements>
-    <Sets>
-      <Set Name="PowerPointApi" MinVersion="1.5"/>
-    </Sets>
-  </Requirements>
-  <DefaultSettings>
+  </Hosts>  <DefaultSettings>
     <SourceLocation DefaultValue="https://openppt-9p7.pages.dev/taskpane.html"/>
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
