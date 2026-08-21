@@ -26,9 +26,11 @@
     ExternalLink,
     Eye,
     EyeOff,
+    FlaskConical,
     FolderUp,
     LogOut,
     Plus,
+    Sparkles,
     Trash2,
   } from "lucide-svelte";
   import { getChatContext } from "./chat-runtime-context";
@@ -41,6 +43,38 @@
   let folderInputRef = $state<HTMLInputElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
   let installing = $state(false);
+  let generatingSkill = $state(false);
+
+  async function generateSkill(): Promise<void> {
+    generatingSkill = true;
+    try {
+      // Read the skill-creator meta-skill for instructions
+      const res = await fetch(`${location.origin}/skills/skill-creator/SKILL.md`);
+      let metaSkill = '';
+      if (res.ok) {
+        metaSkill = await res.text();
+      }
+      // Switch to chat tab and pre-fill the creation prompt
+      // The AI will follow the skill-creator instructions
+      const prompt = metaSkill
+        ? `I want to create a new skill. Follow the skill-creator instructions below to help me design, generate, and test a SKILL.md. Ask me what the skill should do.`
+        : `Help me create a new skill (SKILL.md file). Ask me: 1) What task should this skill automate? 2) What steps are involved? 3) What are example trigger phrases? Then generate a properly formatted SKILL.md with frontmatter (name, description with triggers), numbered steps, verification, and examples. Output it inside <skill-file>...</skill-file> tags so I can install it.`;
+      // Close settings and send the prompt
+      await chat.sendMessage(prompt);
+    } finally {
+      generatingSkill = false;
+    }
+  }
+
+  async function testSkill(name: string): Promise<void> {
+    const prompt = `Test the skill "${name}". Follow these steps:
+1. Load the skill from /home/skills/${name}/SKILL.md
+2. Create 3 test scenarios (happy path, edge case, negative case)
+3. Evaluate trigger reliability for each
+4. Simulate execution of the happy path
+5. Report a Skill Test Report with pass/fail and recommendations`;
+    await chat.sendMessage(prompt);
+  }
 
   const saved = loadSavedConfig(ns);
   let provider = $state(saved?.provider || "");
@@ -1299,6 +1333,14 @@
               </div>
               <button
                 type="button"
+                onclick={() => void testSkill(skill.name)}
+                class="shrink-0 p-1 text-(--chat-text-muted) hover:text-(--chat-accent) transition-colors"
+                title="Test this skill"
+              >
+                <FlaskConical size={12} />
+              </button>
+              <button
+                type="button"
                 onclick={() => chat.uninstallSkill(skill.name)}
                 class="shrink-0 p-1 text-(--chat-text-muted) hover:text-(--chat-error) transition-colors"
                 title="Remove skill"
@@ -1313,6 +1355,17 @@
       {/if}
 
       <div class="flex gap-2">
+        <button
+          type="button"
+          onclick={() => void generateSkill()}
+          disabled={generatingSkill || !$runtimeState.providerConfig}
+          class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-(--chat-accent)/10 border border-(--chat-accent) text-(--chat-accent) hover:bg-(--chat-accent)/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          style="border-radius: var(--chat-radius)"
+          title="AI generates a new skill from your description"
+        >
+          <Sparkles size={12} />
+          {generatingSkill ? "Generating…" : "Generate Skill"}
+        </button>
         <button
           type="button"
           onclick={() => folderInputRef?.click()}

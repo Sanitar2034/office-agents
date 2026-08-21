@@ -49,6 +49,36 @@
       return;
     }
 
+    if (trimmed === "/skill-create" || trimmed.startsWith("/skill-create ")) {
+      input = "";
+      await chat.sendMessage(
+        "I want to create a new skill. Help me design it by asking what task it should automate, " +
+        "then generate a properly formatted SKILL.md with frontmatter (name, description with trigger " +
+        "phrases), numbered steps, verification, error handling, and 2-3 examples. " +
+        "Output the skill inside <skill-file>...</skill-file> tags so I can install it.",
+      );
+      return;
+    }
+
+    if (trimmed === "/skill-test" || trimmed.startsWith("/skill-test ")) {
+      const skillName = trimmed.replace("/skill-test", "").trim();
+      input = "";
+      await chat.sendMessage(
+        skillName
+          ? `Test the skill "${skillName}". Load it from /home/skills/${skillName}/SKILL.md, create 3 test scenarios (happy path, edge case, negative), evaluate trigger reliability, simulate execution, and report a Skill Test Report.`
+          : "List all installed skills with their descriptions, then ask me which one to test.",
+      );
+      return;
+    }
+
+    if (trimmed === "/skill-list") {
+      input = "";
+      await chat.sendMessage(
+        "List all installed skills with their names, descriptions, and file locations from /home/skills/.",
+      );
+      return;
+    }
+
     const attachmentNames = $runtimeState.uploads.map((upload) => upload.name);
     input = "";
     await chat.sendMessage(
@@ -83,6 +113,9 @@
   const CHAT_COMMANDS: Suggestion[] = [
     { label: "/compact", hint: "сжать контекст вручную", insert: "/compact" },
     { label: "/undo", hint: "отменить правки агента", insert: "/undo" },
+    { label: "/skill-create", hint: "AI создаст новый скилл по описанию", insert: "/skill-create" },
+    { label: "/skill-test", hint: "протестировать скилл (триггеры+выполнение)", insert: "/skill-test" },
+    { label: "/skill-list", hint: "список установленных скиллов", insert: "/skill-list" },
   ];
 
   let suggest = $state<{
