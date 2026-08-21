@@ -47,6 +47,12 @@ $xlAssets = Join-Path $site 'excel\assets'
 Assert "excel bundle contains 'undo_edits'" (
     (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'undo_edits' -List -Quiet)
 )
+Assert "excel bundle contains 'pbi_execute_tmsl'" (
+    (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'pbi_execute_tmsl' -List -Quiet)
+)
+Assert "excel bundle contains 'pbi_dmv'" (
+    (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'pbi_dmv' -List -Quiet)
+)
 Assert "excel bundle contains 'pbi_bridge'" (
     (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'pbi_bridge' -List -Quiet)
 )

@@ -569,6 +569,23 @@ function Find-OaPbiPageId {
     return $null
 }
 
+function Invoke-OaPbiTmsl {
+    # Execute a TMSL/XMLA command (CREATE/ALTER/DELETE/REFRESH etc) against
+    # the local AS engine via ADOMD (SqlServer module fallback).
+    param([int]$Port, [string]$Command)
+    if (-not (Get-Command Invoke-ASCmd -ErrorAction SilentlyContinue)) {
+        Import-Module SqlServer -ErrorAction Stop
+    }
+    $result = Invoke-ASCmd -Server "localhost:$Port" -Query $Command
+    $xmlText = if ($result -is [array]) { $result -join '' } else { [string]$result }
+    if ($xmlText -match '<return') { return @{ ok = $true; response = $xmlText } }
+    if ($xmlText -match '<Exception') {
+        $msg = [regex]::Match($xmlText, 'msg="([^"]*)"').Groups[1].Value
+        throw "TMSL error: $msg"
+    }
+    return @{ ok = $true; response = $xmlText }
+}
+
 function Handle-OaPbi {
     # Power BI Desktop bridge: DAX queries against the local msmdsrv engine.
     # Gated by the same desktop-power toggle as the COM bridge.
@@ -595,6 +612,60 @@ function Handle-OaPbi {
     if (-not $origin -or -not $origin.StartsWith('https://localhost:')) {
         Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
         return "$($Req.Method) $path [403 bad origin]"
+    }
+
+    if ($path -eq '/oa-pbi/tmsl') {
+        $body = Read-OaJsonBody $Req
+        if (-not $body -or -not $body.command) {
+            Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'body must be {"command":"{...TMSL JSON...}"}' -HeadOnly $HeadOnly
+            return "POST /oa-pbi/tmsl [400]"
+        }
+        if (-not $port) {
+            $json = '{"ok":false,"error":"Power BI Desktop is not running"}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/tmsl [ok:false no pbi]"
+        }
+        try {
+            $r = Invoke-OaPbiTmsl -Port $port -Command ([string]$body.command)
+            $json = $r | ConvertTo-Json -Depth 3 -Compress
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/tmsl [200]"
+        }
+        catch {
+            $json = '{"ok":false,"error":' + ($_.Exception.Message | ConvertTo-Json) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/tmsl [ok:false $($_.Exception.Message)]"
+        }
+    }
+
+    if ($path -eq '/oa-pbi/dmv') {
+        $body = Read-OaJsonBody $Req
+        if (-not $body -or -not $body.query) {
+            Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'body must be {"query":"SELECT * FROM $SYSTEM.TMSCHEMA_..."}' -HeadOnly $HeadOnly
+            return "POST /oa-pbi/dmv [400]"
+        }
+        if (-not $port) {
+            $json = '{"ok":false,"error":"Power BI Desktop is not running"}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/dmv [ok:false no pbi]"
+        }
+        try {
+            $r = Invoke-OaPbiDaxAsCmd -Port $port -Query ([string]$body.query)
+            $json = $r | ConvertTo-Json -Depth 5 -Compress
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/dmv [200 rows=$($r.rowCount)]"
+        }
+        catch {
+            $json = '{"ok":false,"error":' + ($_.Exception.Message | ConvertTo-Json) + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST /oa-pbi/dmv [ok:false $($_.Exception.Message)]"
+        }
     }
 
     if ($path -eq '/oa-pbi/bridge') {

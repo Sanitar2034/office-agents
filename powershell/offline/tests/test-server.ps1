@@ -152,6 +152,17 @@ try {
     $pq2 = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dax' '{"query":"EVALUATE ROW(\"x\", 1+1)"}' @{ Origin = 'https://localhost:3000' }
     Assert 'pbi dax: agent contract (ok:true with rows, or ok:false PBI not running)' ($pq2.Code -eq 200 -and ($pq2.Text -match '"ok":false' -or $pq2.Text -match '"ok":true'))
     # --- PBI Desktop Bridge (named pipe JSON-RPC) ---
+    # --- PBI model management (TMSL/DMV) ---
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi tmsl: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/tmsl' '{"command":"{ }"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+    Assert 'pbi dmv: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/dmv' '{"query":"SELECT * FROM $SYSTEM.TMSCHEMA_TABLES"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
+
+    $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi tmsl: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/tmsl' '{"command":"{}"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    Assert 'pbi tmsl: 400 empty command' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/tmsl' '{}' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
+    $tmsl = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/tmsl' '{"command":"{}"}' @{ Origin = 'https://localhost:3000' }
+    Assert 'pbi tmsl: agent contract (200 json even without PBI)' ($tmsl.Code -eq 200 -and $tmsl.Text -match 'ok')
+
     $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
     Assert 'pbi bridge: 503 when disabled' ((Http 'POST' 'https://127.0.0.1:3000/oa-pbi/bridge' '{"action":"manifest"}' @{ Origin = 'https://localhost:3000' }).Code -eq 503)
     $null = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }

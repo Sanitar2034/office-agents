@@ -84,6 +84,10 @@ EXCEL WRITE:
 - pbi_bridge: Power BI Desktop Bridge - state (open file), screenshot of a
   report page (PNG lands in the VFS: view it with read - you have vision),
   reload (discards unsaved changes - confirm with the user first).
+- pbi_execute_tmsl: CREATE/ALTER/DELETE tables, measures, calculated columns,
+  relationships in the PBI model (TMSL JSON). Use pbi_dmv to inspect first.
+- pbi_dmv: query DMV system views (TMSCHEMA_TABLES/COLUMNS/MEASURES/
+  RELATIONSHIPS) to list model metadata.
 
 eval_officejs has access to readFile(path) → Promise<string>, readFileBuffer(path) → Promise<Uint8Array>, and writeFile(path, content) → Promise<void> (content: string | Uint8Array) for VFS files.
 

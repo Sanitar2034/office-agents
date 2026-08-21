@@ -37,6 +37,8 @@ import { undoEditsTool } from "./undo-edits";
 import { createComBridgeTool } from "./com-bridge";
 import { createPbiQueryTool } from "./pbi-query";
 import { createPbiBridgeTool } from "./pbi-bridge";
+import { createPbiExecuteTmslTool } from "./pbi-execute-tmsl";
+import { createPbiDmvTool } from "./pbi-dmv";
 import { initUndoJournal } from "../excel/undo-journal";
 import { searchDataTool } from "./search-data";
 import { setCellRangeTool } from "./set-cell-range";
@@ -66,5 +68,7 @@ export function createExcelTools(ctx: AgentContext) {
     createComBridgeTool(),
     createPbiQueryTool(),
     createPbiBridgeTool({ writeFile: (p, d) => ctx.writeFile(p, d) }),
+    createPbiExecuteTmslTool(),
+    createPbiDmvTool(),
   ];
 }
