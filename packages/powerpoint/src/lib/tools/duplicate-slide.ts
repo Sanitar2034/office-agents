@@ -1,4 +1,5 @@
 import { Type } from "@sinclair/typebox";
+import { guardRequirementSet } from "../requirement-guards";
 import { safeRun } from "../pptx/slide-zip";
 import { defineTool, toolError, toolSuccess } from "./types";
 
@@ -22,6 +23,13 @@ export const duplicateSlideTool = defineTool({
     ),
   }),
   execute: async (_toolCallId, params) => {
+    const unsupported = guardRequirementSet(
+      "PowerPointApi",
+      "1.2",
+      "Duplicating slides",
+    );
+    if (unsupported) return toolError(unsupported);
+
     try {
       await safeRun(async (context) => {
         const slides = context.presentation.slides;

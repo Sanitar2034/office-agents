@@ -4,6 +4,7 @@ import SelectionIndicator from "./components/selection-indicator.svelte";
 import TrackChangesIndicator from "./components/track-changes-indicator.svelte";
 import wordApiFullDts from "./docs/word-officejs-api.d.ts?raw";
 import wordApiOnlineDts from "./docs/word-officejs-api-online.d.ts?raw";
+import { requirementSetSupported } from "./requirement-guards";
 import { buildWordSystemPrompt } from "./system-prompt";
 import { createWordTools } from "./tools";
 import { getCustomCommands } from "./vfs/custom-commands";
@@ -85,24 +86,28 @@ async function getDocumentMetadata(): Promise<object> {
     const hasContent = body.text.trim().length > 0;
 
     let changeTrackingMode = "Unknown";
-    try {
-      context.document.load("changeTrackingMode");
-      await context.sync();
-      changeTrackingMode = context.document.changeTrackingMode;
-    } catch {
-      // changeTrackingMode may not be available
+    if (requirementSetSupported("WordApiOnline", "1.1")) {
+      try {
+        context.document.load("changeTrackingMode");
+        await context.sync();
+        changeTrackingMode = context.document.changeTrackingMode;
+      } catch {
+        // changeTrackingMode may not be available
+      }
     }
 
     // Try to get page count (desktop only — WordApiDesktop 1.2+)
     let pageCount: number | null = null;
-    try {
-      const bodyRange = body.getRange();
-      const pages = bodyRange.pages;
-      pages.load("items");
-      await context.sync();
-      pageCount = pages.items.length;
-    } catch {
-      // pages API not available (Word Online)
+    if (requirementSetSupported("WordApiDesktop", "1.2")) {
+      try {
+        const bodyRange = body.getRange();
+        const pages = bodyRange.pages;
+        pages.load("items");
+        await context.sync();
+        pageCount = pages.items.length;
+      } catch {
+        // pages API not available (Word Online)
+      }
     }
 
     // Detect style fonts — what font/size/color the key built-in styles resolve to
@@ -110,7 +115,8 @@ async function getDocumentMetadata(): Promise<object> {
       string,
       { font?: string; size?: number; color?: string }
     > | null = null;
-    try {
+    if (requirementSetSupported("WordApi", "1.5")) {
+      try {
       const styles = context.document.getStyles();
       const styleObjects: Record<string, Word.Style> = {};
       for (const name of KEY_STYLES) {
@@ -143,8 +149,9 @@ async function getDocumentMetadata(): Promise<object> {
         }
       }
       if (Object.keys(styleInfo).length === 0) styleInfo = null;
-    } catch {
-      // getStyles/font API may not be available (requires WordApi 1.5)
+      } catch {
+        // getStyles/font API may not be available (requires WordApi 1.5)
+      }
     }
 
     // Sample first N non-empty paragraphs to detect run-level formatting overrides

@@ -22,6 +22,13 @@ export const screenshotSlideTool = defineTool({
     ),
   }),
   execute: async (_toolCallId, params) => {
+  const unsupported = guardRequirementSet(
+    "PowerPointApi",
+    "1.3",
+    "Slide screenshots",
+  );
+  if (unsupported) return toolError(unsupported);
+
     try {
       const imageData = await safeRun(async (context) => {
         const imageResult = context.presentation.slides

@@ -80,6 +80,20 @@ foreach ($f in 'excel-win32-16.01.js', 'word-win32-16.01.js', 'powerpoint-win32-
     )
 }
 
+# 3c) runtime requirement guards must ship (manifest has no <Requirements> gate)
+Assert "powerpoint bundle ships requirement guards (set names + message)" (
+    (Get-ChildItem (Join-Path $site 'powerpoint\assets') -Filter '*.js' -Recurse |
+        Select-String -Pattern 'PowerPointApi' -List -Quiet) -and
+    (Get-ChildItem (Join-Path $site 'powerpoint\assets') -Filter '*.js' -Recurse |
+        Select-String -Pattern 'LTSC builds cap' -List -Quiet)
+)
+Assert "word bundle ships requirement guards (optional-feature sets)" (
+    (Get-ChildItem (Join-Path $site 'word\assets') -Filter '*.js' -Recurse |
+        Select-String -Pattern 'WordApiOnline' -List -Quiet) -and
+    (Get-ChildItem (Join-Path $site 'word\assets') -Filter '*.js' -Recurse |
+        Select-String -Pattern 'WordApiDesktop' -List -Quiet)
+)
+
 # 4) no sourcemaps shipped
 $maps = Get-ChildItem $site -Recurse -Filter '*.map'
 Assert "no .map files shipped" ($maps.Count -eq 0)

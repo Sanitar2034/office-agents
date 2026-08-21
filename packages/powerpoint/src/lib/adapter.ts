@@ -154,14 +154,31 @@ async function getPresentationMetadata(): Promise<object> {
     const slides = context.presentation.slides;
     slides.load("items/id");
 
-    const pageSetup = context.presentation.pageSetup;
-    pageSetup.load(["slideWidth", "slideHeight"]);
+    // Optional metadata below degrades gracefully on older hosts:
+    // pageSetup = PowerPointApi 1.10 (M365), masters = 1.3, selection = 1.5.
+    let pageSetup: { slideWidth?: number; slideHeight?: number } | undefined;
+    try {
+      pageSetup = context.presentation.pageSetup;
+      pageSetup.load(["slideWidth", "slideHeight"]);
+    } catch {
+      // pageSetup not available on this host
+    }
 
-    const masters = context.presentation.slideMasters;
-    masters.load("items");
+    let masters: PowerPoint.SlideMasterCollection | undefined;
+    try {
+      masters = context.presentation.slideMasters;
+      masters.load("items");
+    } catch {
+      // slideMasters requires PowerPointApi 1.3
+    }
 
-    const selectedSlides = context.presentation.getSelectedSlides();
-    selectedSlides.load("items/id");
+    let selectedSlides: PowerPoint.SlideScopedCollection | undefined;
+    try {
+      selectedSlides = context.presentation.getSelectedSlides();
+      selectedSlides.load("items/id");
+    } catch {
+      // slide selection requires PowerPointApi 1.5
+    }
 
     let selectedShapesCollection: PowerPoint.ShapeScopedCollection | undefined;
     try {
@@ -175,7 +192,8 @@ async function getPresentationMetadata(): Promise<object> {
 
     await context.sync();
 
-    for (const master of masters.items) {
+    const masterItems = masters?.items ?? [];
+    for (const master of masterItems) {
       master.layouts.load("items/name,items/id");
     }
     await context.sync();
@@ -192,15 +210,16 @@ async function getPresentationMetadata(): Promise<object> {
     }
 
     const themeResult =
-      masters.items.length > 0
-        ? await detectThemeDefault(masters.items[0], context)
+      masterItems.length > 0
+        ? await detectThemeDefault(masterItems[0], context)
         : { isDefault: true, confidence: "low" as const };
 
     const idToIndex = new Map(slides.items.map((s, i) => [s.id, i]));
-    const selectedIndices = selectedSlides.items.map((s) => ({
-      slideId: s.id,
-      positionOneIndexed: (idToIndex.get(s.id) ?? 0) + 1,
-    }));
+    const selectedIndices =
+      selectedSlides?.items.map((s) => ({
+        slideId: s.id,
+        positionOneIndexed: (idToIndex.get(s.id) ?? 0) + 1,
+      })) ?? [];
 
     const selectedShapes =
       selectedShapesCollection?.items.map((s) => ({
@@ -215,14 +234,14 @@ async function getPresentationMetadata(): Promise<object> {
 
     return {
       slideCount: slides.items.length,
-      slideWidth: pageSetup.slideWidth,
-      slideHeight: pageSetup.slideHeight,
+      slideWidth: pageSetup?.slideWidth ?? null,
+      slideHeight: pageSetup?.slideHeight ?? null,
       isDefaultTheme: themeResult.isDefault,
       themeDetectionConfidence: themeResult.confidence,
       hasContent,
       selectedSlides: selectedIndices,
       selectedShapes,
-      masters: masters.items.map((m, mi) => ({
+      masters: masterItems.map((m, mi) => ({
         index: mi,
         layouts: m.layouts.items.map((l) => ({
           name: l.name,

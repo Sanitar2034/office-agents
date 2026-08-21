@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import { safeRun, withSlideZip } from "../pptx/slide-zip";
 import { findShapeById, sanitizeXmlAmpersands } from "../pptx/xml-utils";
+import { guardRequirementSet } from "../requirement-guards";
 import { defineTool, toolError, toolSuccess } from "./types";
 
 /* global PowerPoint */
@@ -37,6 +38,13 @@ export const editSlideTextTool = defineTool({
     ),
   }),
   execute: async (_toolCallId, params) => {
+  const unsupported = guardRequirementSet(
+    "PowerPointApi",
+    "1.4",
+    "Editing slide text",
+  );
+  if (unsupported) return toolError(unsupported);
+
     try {
       await safeRun(async (context) => {
         await withSlideZip(

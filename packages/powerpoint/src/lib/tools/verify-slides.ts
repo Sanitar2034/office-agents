@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { safeRun } from "../pptx/slide-zip";
+import { guardRequirementSet } from "../requirement-guards";
 import { defineTool, toolError, toolSuccess } from "./types";
 
 /* global PowerPoint */
@@ -110,6 +111,13 @@ export const verifySlidesTool = defineTool({
     ),
   }),
   execute: async (_toolCallId, _params) => {
+  const unsupported = guardRequirementSet(
+    "PowerPointApi",
+    "1.3",
+    "Slide verification",
+  );
+  if (unsupported) return toolError(unsupported);
+
     try {
       const result = await safeRun(async (context) => {
         const slides = context.presentation.slides;
