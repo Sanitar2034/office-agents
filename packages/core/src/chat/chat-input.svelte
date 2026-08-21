@@ -1,6 +1,14 @@
 <script lang="ts">
   import { Paperclip, Send, Square, X } from "lucide-svelte";
   import { getChatContext } from "./chat-runtime-context";
+  import {
+    addPrompt,
+    loadPromptHistory,
+    recallDown,
+    recallUp,
+    savePromptHistory,
+    type BrowseState,
+  } from "./prompt-history";
 
   const LINE_HEIGHT = 20;
   const MIN_ROWS = 1;
@@ -12,6 +20,55 @@
   let input = $state("");
   let textareaRef: HTMLTextAreaElement | null = null;
   let fileInputRef: HTMLInputElement | null = null;
+
+  // --- prompt history (classic ArrowUp / ArrowDown recall) ---
+  function historyStorage(): Storage | null {
+    try {
+      return typeof localStorage !== "undefined" ? localStorage : null;
+    } catch {
+      return null;
+    }
+  }
+
+  let promptHistory = $state<string[]>(loadPromptHistory(historyStorage()));
+  let browse: BrowseState = $state({ index: -1, draft: "" });
+
+  function rememberPrompt(text: string) {
+    promptHistory = addPrompt(promptHistory, text);
+    savePromptHistory(historyStorage(), promptHistory);
+    browse = { index: -1, draft: "" };
+  }
+
+  function recallToInput(text: string) {
+    input = text;
+    queueMicrotask(() => {
+      autoResize();
+      textareaRef?.focus();
+      textareaRef?.setSelectionRange(text.length, text.length);
+    });
+  }
+
+  function handleHistoryKey(event: KeyboardEvent): boolean {
+    const pos = textareaRef?.selectionStart ?? 0;
+    if (event.key === "ArrowUp") {
+      // only when the caret is on the first line (terminal behaviour)
+      if (input.slice(0, pos).includes("\n")) return false;
+      const r = recallUp(promptHistory, browse, input);
+      if (r.browse === browse) return false; // empty history no-op
+      browse = r.browse;
+      recallToInput(r.text);
+      return true;
+    }
+    if (event.key === "ArrowDown") {
+      if (browse.index === -1) return false;
+      if (input.slice(pos).includes("\n")) return false;
+      const r = recallDown(promptHistory, browse, input);
+      browse = r.browse;
+      recallToInput(r.text);
+      return true;
+    }
+    return false;
+  }
 
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes}B`;
@@ -33,6 +90,7 @@
   async function handleSubmit() {
     const trimmed = input.trim();
     if (!trimmed || $runtimeState.isStreaming) return;
+    rememberPrompt(trimmed);
 
     if (trimmed === "/compact" || trimmed.startsWith("/compact ")) {
       input = "";
@@ -303,6 +361,7 @@
       oninput={() => {
         autoResize();
         updateSuggest();
+        browse = { index: -1, draft: "" };
       }}
       onkeydown={(event) => {
         if (suggest && suggestions.length > 0) {
@@ -325,6 +384,10 @@
             suggest = null;
             return;
           }
+        }
+        if (handleHistoryKey(event)) {
+          event.preventDefault();
+          return;
         }
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
