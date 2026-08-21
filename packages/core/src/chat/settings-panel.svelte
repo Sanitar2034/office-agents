@@ -637,11 +637,11 @@
 
 <div class="flex-1 overflow-y-auto p-4 space-y-6" style="font-family: var(--chat-font-mono)">
   <div>
-    <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted) mb-4">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary) mb-4">
       api configuration
     </div>
 
-    <div class="space-y-4">
+    <div class="space-y-4 border border-(--chat-border) bg-(--chat-bg-secondary) p-4" style="border-radius: var(--chat-radius)">
       <label class="block">
         <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
           Provider
@@ -1175,8 +1175,8 @@
       </div>
 
       {#if adapter?.appName === "OpenExcel"}
-      <div class="border-t border-(--chat-border) pt-4 space-y-3">
-        <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
+      <div class="border-t-2 border-(--chat-border) pt-4 space-y-3">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
           desktop power tools (COM bridge)
         </div>
 
@@ -1213,8 +1213,8 @@
       </div>
       {/if}
 
-      <div class="border-t border-(--chat-border) pt-4 space-y-3">
-        <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
+      <div class="border-t-2 border-(--chat-border) pt-4 space-y-3">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
           dev add-in registration
         </div>
 
@@ -1241,7 +1241,7 @@
             <div class="flex gap-1.5">
               <button
                 type="button"
-                class="px-2 py-1 text-[10px] border border-(--chat-border) text-(--chat-text-secondary) hover:text-(--chat-text-primary) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                class="px-2.5 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-primary) hover:border-(--chat-border-active) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 style="border-radius: var(--chat-radius)"
                 disabled={devRegBusy || devRegEnabled !== false}
                 onclick={() => void setDevRegistration(true)}
@@ -1250,7 +1250,7 @@
               </button>
               <button
                 type="button"
-                class="px-2 py-1 text-[10px] border border-(--chat-border) text-(--chat-text-secondary) hover:text-(--chat-error) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                class="px-2.5 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-error) hover:border-(--chat-border-active) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 style="border-radius: var(--chat-radius)"
                 disabled={devRegBusy || devRegEnabled !== true}
                 onclick={() => void setDevRegistration(false)}
@@ -1265,8 +1265,8 @@
         {/if}
       </div>
 
-      <div class="border-t border-(--chat-border) pt-4 space-y-3">
-        <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
+      <div class="border-t-2 border-(--chat-border) pt-4 space-y-3">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
           web tools
         </div>
 
@@ -1405,7 +1405,7 @@
     </div>
   </div>
 
-  <div class="border-t border-(--chat-border) pt-4">
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4" style="border-radius: var(--chat-radius)">
     <div class="flex items-center gap-2 text-xs">
       {#if isConfigured}
         <Check size={12} class="text-(--chat-success)" />
@@ -1426,8 +1426,8 @@
     </div>
   </div>
 
-  <div class="border-t border-(--chat-border) pt-4">
-    <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted) mb-4">
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4" style="border-radius: var(--chat-radius)">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary) mb-4">
       agent skills
     </div>
 
@@ -1527,8 +1527,8 @@
     />
   </div>
 
-  <div class="border-t border-(--chat-border) pt-4">
-    <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted) mb-2">
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4" style="border-radius: var(--chat-radius)">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary) mb-2">
       about
     </div>
     <p class="text-xs text-(--chat-text-secondary) leading-relaxed">
