@@ -66,6 +66,20 @@ Assert "excel bundle contains 'Desktop Power Tools'" (
     (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern ([regex]::Escape('Desktop Power Tools')) -List -Quiet)
 )
 
+# 3b) taskpane pin: the pane must re-open by itself (setStartupBehavior)
+foreach ($app in 'excel', 'powerpoint', 'word') {
+    $assets = Join-Path $site "$app\assets"
+    Assert "$app bundle pins the taskpane (setStartupBehavior)" (
+        (Get-ChildItem $assets -Filter '*.js' -Recurse | Select-String -Pattern 'setStartupBehavior' -List -Quiet)
+    )
+}
+$oj = Join-Path $root 'office-js'
+foreach ($f in 'excel-win32-16.01.js', 'word-win32-16.01.js', 'powerpoint-win32-16.01.js') {
+    Assert "vendored office-js/$f supports setStartupBehavior" (
+        (Get-Content (Join-Path $oj $f) -Raw) -match 'setStartupBehavior'
+    )
+}
+
 # 4) no sourcemaps shipped
 $maps = Get-ChildItem $site -Recurse -Filter '*.map'
 Assert "no .map files shipped" ($maps.Count -eq 0)

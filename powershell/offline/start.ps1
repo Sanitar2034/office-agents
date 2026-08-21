@@ -48,9 +48,8 @@ switch ($Launch) {
 Write-Host ''
 Write-Host 'Server:      https://localhost:3000 (Excel), 3001 (PowerPoint), 3002 (Word)' -ForegroundColor Cyan
 if ($Launch -ne 'none') { Write-Host 'Office apps launched.' }
-Write-Host 'Add the add-ins once per app:' -ForegroundColor Cyan
-Write-Host '  Insert -> Get Add-ins -> SHARED FOLDER -> OpenExcel / OpenPPT / OpenWord -> Add'
-Write-Host ''
+Write-Host 'Add-ins auto-load with Office (dev registration).' -ForegroundColor Cyan
+Write-Host 'The taskpane re-opens by itself in every document where it was opened once.'
 Write-Host 'LLM settings inside the add-in (Settings -> custom endpoint):' -ForegroundColor Cyan
 Write-Host '  https://localhost:3000/llm-proxy/v1   (Excel taskpane)'
 Write-Host '  https://localhost:3002/llm-proxy/v1   (Word taskpane)'

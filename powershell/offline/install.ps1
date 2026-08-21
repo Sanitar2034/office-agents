@@ -119,11 +119,11 @@ if (-not $CertsOnly) {
     New-ItemProperty -Path $devKey -Name 'RefreshAddins' -Value 1 -PropertyType DWord -Force | Out-Null
     Write-Host "      $registered add-in(s) will auto-load on Office start" -ForegroundColor Green
 
-    # --- 5. Taskpane auto-open hint ----------------------------------------
-    Write-Host '[5/5] Taskpane auto-open:' -ForegroundColor Yellow
-    Write-Host '      The add-ins will appear in the ribbon automatically.' -ForegroundColor Green
-    Write-Host '      To auto-OPEN the taskpane, call this once in the add-in:' -ForegroundColor DarkGray
-    Write-Host '      Office.addin.setStartupBehavior(Office.StartupBehavior.load)' -ForegroundColor DarkGray
+    # --- 5. Taskpane auto-open (built into the bundles) ---------------------
+    # The taskpane entrypoints call Office.addin.setStartupBehavior(load)
+    # after Office.onReady, so the pane re-opens automatically every time
+    # the document opens - the Office host remembers this per document.
+    Write-Host '[5/5] Taskpane auto-open: built-in (Office.addin.setStartupBehavior)' -ForegroundColor Green
 }
 
 Write-Host ''
@@ -132,7 +132,8 @@ Write-Host 'Excel/Word/PowerPoint — no manual Insert → Add needed.' -Foregro
 Write-Host ''
 Write-Host '  1. Run start.ps1 to start the HTTPS server.'
 Write-Host '  2. Open Excel/Word/PowerPoint — add-ins appear in the ribbon.'
-Write-Host '  3. If the taskpane does not open, click the ribbon button once.'
+Write-Host '  3. The taskpane re-opens by itself in every document where it was'
+Write-Host '     opened once (pin via setStartupBehavior, survives restarts).'
 Write-Host ''
 Write-Host 'LLM endpoint (Settings inside the add-in):' -ForegroundColor Cyan
 Write-Host '  https://localhost:300X/llm-proxy/v1   (X = 0 Excel, 1 PPT, 2 Word)'
