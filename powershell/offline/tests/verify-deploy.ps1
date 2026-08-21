@@ -106,6 +106,11 @@ Assert "word bundle ships requirement guards (optional-feature sets)" (
         Select-String -Pattern 'WordApiDesktop' -List -Quiet)
 )
 
+# 3e) autostart helper ships next to the server
+Assert "autostart.ps1 exists next to the server" (
+    Test-Path (Join-Path $root 'autostart.ps1')
+)
+
 # 4) no sourcemaps shipped
 $maps = Get-ChildItem $site -Recurse -Filter '*.map'
 Assert "no .map files shipped" ($maps.Count -eq 0)

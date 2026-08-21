@@ -153,6 +153,24 @@ try {
     Assert 'dev-registration restore = 200 + state true' ($devOn.Code -eq 200 -and $devOn.Text -match '"enabled":true')
     Assert 'dev-registration GET after restore = true' ((Http 'GET' 'https://127.0.0.1:3000/oa-config/dev-registration').Text -match '"enabled":true')
 
+    # --- autostart (HKCU Run key, no admin) ---
+    & (Join-Path $root 'autostart.ps1') -Enable | Out-Null
+    $runVal = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'OfficeAgentsServer' -ErrorAction SilentlyContinue).OfficeAgentsServer
+    Assert 'autostart enable: Run key exists and points at server.ps1' ($runVal -match 'server\.ps1')
+    Assert 'autostart command launches hidden with log redirect' ($runVal -match 'Hidden' -and $runVal -match '\.log')
+    & (Join-Path $root 'autostart.ps1') -Disable | Out-Null
+    $runVal2 = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'OfficeAgentsServer' -ErrorAction SilentlyContinue).OfficeAgentsServer
+    Assert 'autostart disable: Run key removed' ($null -eq $runVal2)
+
+    # --- duplicate launch guard: a second server instance must exit quietly ---
+    $dupLog = Join-Path $env:TEMP 'oa-test-dup.log'
+    $dup = Start-Process powershell.exe -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f (Join-Path $root 'server.ps1'))
+    ) -PassThru -WindowStyle Hidden -RedirectStandardOutput $dupLog -RedirectStandardError "$dupLog.err"
+    $dupExited = $dup.WaitForExit(15000)
+    Assert 'duplicate server instance exits instead of failing to bind' $dupExited
+    Assert 'original server still owns port 3000' ((Http 'GET' 'https://127.0.0.1:3000/taskpane.html').Code -eq 200)
+
     # --- PBI bridge (gated by the same desktop power toggle) ---
     $pst = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/status'
     Assert 'pbi status: 200 + pbiRunning field' ($pst.Code -eq 200 -and $pst.Text -match 'pbiRunning')

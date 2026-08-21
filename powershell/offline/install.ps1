@@ -129,7 +129,8 @@ if (-not $CertsOnly) {
 Write-Host ''
 Write-Host 'Setup complete.' -ForegroundColor Cyan
 Write-Host ''
-Write-Host '  1. Run start.ps1 to start the HTTPS server.'
+Write-Host '  1. Run start.ps1 to start the HTTPS server'
+Write-Host '     (or .\autostart.ps1 -Enable to start it at every Windows logon).'
 Write-Host '  2. Insert once per app: Insert -> My Add-ins -> SHARED FOLDER -> Add.'
 Write-Host '     After that the pane is pinned per document and re-opens by itself'
 Write-Host '     (setStartupBehavior), surviving restarts.'

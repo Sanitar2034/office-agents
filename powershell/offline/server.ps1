@@ -62,6 +62,15 @@ $portMap = [ordered]@{
     '3001' = (Join-Path $siteRoot 'powerpoint')
     '3002' = (Join-Path $siteRoot 'word')
 }
+
+# duplicate-launch guard: if an instance already owns one of our ports,
+# exit quietly (keeps autostart and double-clicking start.ps1 harmless)
+foreach ($p in $portMap.Keys) {
+    if (Get-NetTCPConnection -LocalPort ([int]$p) -State Listen -ErrorAction SilentlyContinue) {
+        Write-Host "Port $p is already in use - another server instance is running. Exiting."
+        exit 0
+    }
+}
 foreach ($p in $portMap.Keys) {
     if (-not (Test-Path -LiteralPath $portMap[$p])) {
         Write-Host "  WARNING: site dir not found: $($portMap[$p])" -ForegroundColor Yellow
