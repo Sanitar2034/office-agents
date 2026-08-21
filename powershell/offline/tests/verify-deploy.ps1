@@ -87,6 +87,10 @@ Assert "powerpoint bundle ships requirement guards (set names + message)" (
     (Get-ChildItem (Join-Path $site 'powerpoint\assets') -Filter '*.js' -Recurse |
         Select-String -Pattern 'LTSC builds cap' -List -Quiet)
 )
+Assert "powerpoint bundle ships the sldSz slide-size fallback hint" (
+    (Get-ChildItem (Join-Path $site 'powerpoint\assets') -Filter '*.js' -Recurse |
+        Select-String -Pattern 'sldSz' -List -Quiet)
+)
 Assert "word bundle ships requirement guards (optional-feature sets)" (
     (Get-ChildItem (Join-Path $site 'word\assets') -Filter '*.js' -Recurse |
         Select-String -Pattern 'WordApiOnline' -List -Quiet) -and

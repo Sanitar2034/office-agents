@@ -338,6 +338,7 @@ When adding shapes that may overlap (e.g., a rectangle behind a title), use \`sh
 
 ## Units and Dimensions
 All positions and sizes are in **points** (not pixels). Use the \`slideWidth\` and \`slideHeight\` from \`<initial_state>\`. Use the full available slide area — stretch content to fill the space rather than leaving large margins. Larger shapes mean larger, more readable fonts.
+If \`slideWidth\`/\`slideHeight\` are null in \`<initial_state>\` (older Office builds lack the pageSetup API), read the slide size from the PPTX zip: in \`ppt/presentation.xml\` the root \`<p:presentation>\` element carries \`sldSz="cx=…, cy=…"\` in EMUs. Convert: points = EMU / 12700 (standard 16:9 = 12192000×6858000 EMU = 960×540 pt).
 
 ## Adding Images
 There is no \`addImage\` method. Use \`Office.context.document.setSelectedDataAsync(base64Data, { coercionType: Office.CoercionType.Image, imageLeft, imageTop, imageWidth, imageHeight })\`.
