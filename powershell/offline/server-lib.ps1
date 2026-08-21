@@ -157,8 +157,25 @@ function Set-OaServerConfig {
     Set-Content -LiteralPath $ConfigFile -Value ($cfg | ConvertTo-Json -Compress) -Encoding UTF8
 }
 
+function Get-OaDevAddinEntries {
+    # our add-in ids + manifest paths (manifests/ next to the server root)
+    param([string]$Root)
+    $entries = @()
+    if (-not $Root) { return $entries }
+    $manifestsDir = Join-Path $Root 'manifests'
+    foreach ($mf in (Get-ChildItem (Join-Path $manifestsDir '*.xml') -ErrorAction SilentlyContinue)) {
+        try {
+            [xml]$manifest = Get-Content -LiteralPath $mf.FullName -Raw
+            $addinId = [string]$manifest.OfficeApp.Id
+            if ($addinId) { $entries += @{ Id = $addinId; Path = $mf.FullName } }
+        } catch { }
+    }
+    return $entries
+}
+
 function Handle-OaConfig {
-    # /oa-config/llm-target and /oa-config/com-bridge: live, persisted settings
+    # /oa-config/llm-target, /oa-config/com-bridge and
+    # /oa-config/dev-registration: live, persisted settings
     # changed from the add-in (same-origin only for mutations).
     param($Ssl, $Req, $Sync, [bool]$HeadOnly)
     $path = ([string]$Req.RawUrl -split '\?')[0].TrimEnd('/')
@@ -201,6 +218,89 @@ function Handle-OaConfig {
         }
         Send-OaError -Ssl $Ssl -Code 405 -Status 'Method Not Allowed' -Message 'GET or POST only' -HeadOnly $HeadOnly
         return "$($Req.Method) /oa-config/com-bridge [405]"
+    }
+
+    if ($path -eq '/oa-config/dev-registration') {
+        # WEF\Developer rollback: register (npm-start style) or fully remove
+        # OUR entries only - other dev add-ins are never touched. Removing
+        # restores the pre-install state (empty key is deleted entirely).
+        $devKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
+        $root = $null
+        if ($Sync.ConfigFile) { $root = Split-Path -Parent ([string]$Sync.ConfigFile) }
+        $entries = @(Get-OaDevAddinEntries -Root $root)
+        if ($entries.Count -eq 0) {
+            Send-OaError -Ssl $Ssl -Code 500 -Status 'Server Error' -Message 'no manifests found next to the server' -HeadOnly $HeadOnly
+            return "$($Req.Method) $path [500 no manifests]"
+        }
+        $getRegistered = {
+            $n = 0
+            foreach ($e in $entries) {
+                if (Get-ItemProperty -Path $devKey -Name $e.Id -ErrorAction SilentlyContinue) { $n++ }
+            }
+            return $n
+        }
+        if ($Req.Method -eq 'GET' -or $Req.Method -eq 'HEAD') {
+            $registered = & $getRegistered
+            $enabled = ($registered -eq $entries.Count)
+            $json = '{"enabled":' + ($(if ($enabled) { 'true' } else { 'false' })) +
+                ',"registered":' + $registered + ',"total":' + $entries.Count + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "GET $path [200 registered=$registered/$($entries.Count)]"
+        }
+        if ($Req.Method -eq 'POST') {
+            $origin = [string]$Req.Headers['origin']
+            if (-not $origin -or -not $origin.StartsWith('https://localhost:')) {
+                Send-OaError -Ssl $Ssl -Code 403 -Status 'Forbidden' -Message 'bad origin' -HeadOnly $HeadOnly
+                return "POST $path [403 bad origin]"
+            }
+            $enable = $false
+            try {
+                $bodyText = ''
+                if ($Req.Body) { $bodyText = [Text.Encoding]::UTF8.GetString($Req.Body) }
+                $enable = [bool](($bodyText | ConvertFrom-Json).enabled)
+            } catch {
+                Send-OaError -Ssl $Ssl -Code 400 -Status 'Bad Request' -Message 'invalid JSON body' -HeadOnly $HeadOnly
+                return "POST $path [400]"
+            }
+            try {
+                if ($enable) {
+                    if (-not (Test-Path $devKey)) { New-Item -Path $devKey -Force | Out-Null }
+                    foreach ($e in $entries) {
+                        New-ItemProperty -Path $devKey -Name $e.Id -Value $e.Path `
+                            -PropertyType String -Force | Out-Null
+                    }
+                    New-ItemProperty -Path $devKey -Name 'RefreshAddins' -Value 1 -PropertyType DWord -Force | Out-Null
+                } else {
+                    foreach ($e in $entries) {
+                        Remove-ItemProperty -Path $devKey -Name $e.Id -Force -ErrorAction SilentlyContinue
+                    }
+                    Remove-ItemProperty -Path $devKey -Name 'RefreshAddins' -Force -ErrorAction SilentlyContinue
+                    # restore the pre-install state: drop the key only when it
+                    # holds nothing of ours or anyone else (values AND subkeys)
+                    if (Test-Path $devKey) {
+                        $key = Get-Item $devKey
+                        $left = @($key.GetValueNames())
+                        $subs = @($key.GetSubKeyNames())
+                        if ($left.Count -eq 0 -and $subs.Count -eq 0) {
+                            Remove-Item $devKey -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                }
+            } catch {
+                Send-OaError -Ssl $Ssl -Code 500 -Status 'Server Error' -Message "registry update failed: $($_.Exception.Message)" -HeadOnly $HeadOnly
+                return "POST $path [500]"
+            }
+            $registered = & $getRegistered
+            $enabled = ($registered -eq $entries.Count)
+            $json = '{"ok":true,"enabled":' + ($(if ($enabled) { 'true' } else { 'false' })) +
+                ',"registered":' + $registered + ',"total":' + $entries.Count + '}'
+            $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+            Write-OaResponse -Ssl $Ssl -Code 200 -Status 'OK' -ContentType 'application/json; charset=utf-8' -Bytes $bytes -HeadOnly $HeadOnly
+            return "POST $path [200 enabled=$enabled]"
+        }
+        Send-OaError -Ssl $Ssl -Code 405 -Status 'Method Not Allowed' -Message 'GET or POST only' -HeadOnly $HeadOnly
+        return "$($Req.Method) $path [405]"
     }
 
     if ($path -ne '/oa-config/llm-target') {

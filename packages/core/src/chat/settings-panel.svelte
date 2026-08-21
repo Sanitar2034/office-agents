@@ -240,6 +240,70 @@
   }
 
   if (initialIsExcel) void loadComStatus();
+
+  // Dev add-in registration (WEF\Developer): register / roll back to the
+  // pre-install state via the offline server (same-origin endpoint)
+  let devRegEnabled = $state<boolean | null>(null);
+  let devRegCount = $state("");
+  let devRegBusy = $state(false);
+  let devRegReachable = $state(true);
+  let devRegMessage = $state("");
+
+  async function loadDevRegistration(): Promise<void> {
+    try {
+      const res = await fetch(`${location.origin}/oa-config/dev-registration`);
+      const data = (await res.json()) as {
+        enabled?: boolean;
+        registered?: number;
+        total?: number;
+      };
+      devRegEnabled = data.enabled === true;
+      devRegCount =
+        data.registered !== undefined && data.total !== undefined
+          ? `${data.registered}/${data.total}`
+          : "";
+      devRegReachable = true;
+    } catch {
+      devRegReachable = false;
+      devRegEnabled = null;
+    }
+  }
+
+  async function setDevRegistration(enable: boolean): Promise<void> {
+    devRegBusy = true;
+    devRegMessage = "";
+    try {
+      const res = await fetch(`${location.origin}/oa-config/dev-registration`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: enable }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        enabled?: boolean;
+        registered?: number;
+        total?: number;
+      };
+      if (res.ok && data.ok) {
+        devRegEnabled = data.enabled === true;
+        devRegCount =
+          data.registered !== undefined && data.total !== undefined
+            ? `${data.registered}/${data.total}`
+            : "";
+        devRegMessage = enable
+          ? "Registered — the add-ins will load with Office again."
+          : "Removed — dev registration rolled back. Restart Office to apply.";
+      } else {
+        devRegMessage = "Server rejected the request.";
+      }
+    } catch {
+      devRegMessage = "Server not reachable (start.ps1).";
+    } finally {
+      devRegBusy = false;
+    }
+  }
+
+  void loadDevRegistration();
   let webSearchProvider = $state(savedWeb.searchProvider);
   let imageSearchProvider = $state(savedWeb.imageSearchProvider);
   let webFetchProvider = $state(savedWeb.fetchProvider);
@@ -1148,6 +1212,58 @@
         {/if}
       </div>
       {/if}
+
+      <div class="border-t border-(--chat-border) pt-4 space-y-3">
+        <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">
+          dev add-in registration
+        </div>
+
+        {#if !devRegReachable}
+          <p class="text-[10px] text-(--chat-text-muted)">
+            Offline server unreachable — run start.ps1 on this machine.
+          </p>
+        {:else}
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-xs text-(--chat-text-secondary)">
+                {devRegEnabled === null
+                  ? "checking…"
+                  : devRegEnabled
+                    ? `Registered${devRegCount ? ` (${devRegCount})` : ""}`
+                    : "Not registered"}
+              </span>
+              <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
+                WEF\Developer registry entries that make the add-ins load with
+                Office. Remove rolls back to the pre-install state (other dev
+                add-ins are untouched); restart Office afterwards.
+              </p>
+            </div>
+            <div class="flex gap-1.5">
+              <button
+                type="button"
+                class="px-2 py-1 text-[10px] border border-(--chat-border) text-(--chat-text-secondary) hover:text-(--chat-text-primary) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style="border-radius: var(--chat-radius)"
+                disabled={devRegBusy || devRegEnabled !== false}
+                onclick={() => void setDevRegistration(true)}
+              >
+                Register
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1 text-[10px] border border-(--chat-border) text-(--chat-text-secondary) hover:text-(--chat-error) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style="border-radius: var(--chat-radius)"
+                disabled={devRegBusy || devRegEnabled !== true}
+                onclick={() => void setDevRegistration(false)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+          {#if devRegMessage}
+            <p class="text-[10px] text-(--chat-text-muted)">{devRegMessage}</p>
+          {/if}
+        {/if}
+      </div>
 
       <div class="border-t border-(--chat-border) pt-4 space-y-3">
         <div class="text-[10px] uppercase tracking-widest text-(--chat-text-muted)">

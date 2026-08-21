@@ -91,6 +91,14 @@ Assert "powerpoint bundle ships the sldSz slide-size fallback hint" (
     (Get-ChildItem (Join-Path $site 'powerpoint\assets') -Filter '*.js' -Recurse |
         Select-String -Pattern 'sldSz' -List -Quiet)
 )
+
+# 3d) dev-registration rollback UI must ship in every settings panel
+foreach ($app in 'excel', 'powerpoint', 'word') {
+    Assert "$app bundle ships the dev-registration rollback button" (
+        (Get-ChildItem (Join-Path $site "$app\assets") -Filter '*.js' -Recurse |
+            Select-String -Pattern 'dev-registration' -List -Quiet)
+    )
+}
 Assert "word bundle ships requirement guards (optional-feature sets)" (
     (Get-ChildItem (Join-Path $site 'word\assets') -Filter '*.js' -Recurse |
         Select-String -Pattern 'WordApiOnline' -List -Quiet) -and

@@ -136,10 +136,22 @@ try {
 
     Assert 'com run-macro: 403 bad origin' ((Http 'POST' 'https://127.0.0.1:3000/oa-com/run-macro' '{"macro":"x"}' @{ Origin = 'https://evil.example' }).Code -eq 403)
     $rm = Http 'POST' 'https://127.0.0.1:3000/oa-com/run-macro' '{"macro":"No.Such.Macro"}' @{ Origin = 'https://localhost:3000' }
-    Assert 'com run-macro: executes via COM (ok or excel error, not 5xx server)' ($rm.Code -eq 200 -and ($rm.Text -match '"ok":true' -or $rm.Text -match '"ok":false'))
+    Assert 'com run-macro: COM contract (200 ok, or 409 when Excel is closed)' (($rm.Code -eq 200 -and ($rm.Text -match '"ok":true' -or $rm.Text -match '"ok":false')) -or $rm.Code -eq 409)
 
     $dis = Http 'POST' 'https://127.0.0.1:3000/oa-config/com-bridge' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
     Assert 'com-bridge disable: 200' ($dis.Code -eq 200)
+
+    # --- dev add-in registration (WEF\Developer rollback button) ---
+    $devGet = Http 'GET' 'https://127.0.0.1:3000/oa-config/dev-registration'
+    Assert 'dev-registration GET = 200 json' ($devGet.Code -eq 200 -and $devGet.Text -match 'enabled' -and $devGet.Text -match 'registered')
+    Assert 'dev-registration POST bad origin = 403' ((Http 'POST' 'https://127.0.0.1:3000/oa-config/dev-registration' '{"enabled":false}' @{ Origin = 'https://evil.example' }).Code -eq 403)
+    Assert 'dev-registration POST bad body = 400' ((Http 'POST' 'https://127.0.0.1:3000/oa-config/dev-registration' 'not-json' @{ Origin = 'https://localhost:3000' }).Code -eq 400)
+    $devOff = Http 'POST' 'https://127.0.0.1:3000/oa-config/dev-registration' '{"enabled":false}' @{ Origin = 'https://localhost:3000' }
+    Assert 'dev-registration unregister = 200 + state false' ($devOff.Code -eq 200 -and $devOff.Text -match '"enabled":false')
+    Assert 'dev-registration GET after unregister = false' ((Http 'GET' 'https://127.0.0.1:3000/oa-config/dev-registration').Text -match '"enabled":false')
+    $devOn = Http 'POST' 'https://127.0.0.1:3000/oa-config/dev-registration' '{"enabled":true}' @{ Origin = 'https://localhost:3000' }
+    Assert 'dev-registration restore = 200 + state true' ($devOn.Code -eq 200 -and $devOn.Text -match '"enabled":true')
+    Assert 'dev-registration GET after restore = true' ((Http 'GET' 'https://127.0.0.1:3000/oa-config/dev-registration').Text -match '"enabled":true')
 
     # --- PBI bridge (gated by the same desktop power toggle) ---
     $pst = Http 'POST' 'https://127.0.0.1:3000/oa-pbi/status'
