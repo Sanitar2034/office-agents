@@ -1,4 +1,5 @@
 import type { AgentContext } from "@office-agents/core";
+import { undoSlideEditsTool } from "./undo-slide-edits";
 import { createBashTool, createReadTool } from "@office-agents/core";
 import { duplicateSlideTool } from "./duplicate-slide";
 import { createEditSlideChartTool } from "./edit-slide-chart";
@@ -16,6 +17,7 @@ export function createPptTools(ctx: AgentContext) {
     // fs tools
     createReadTool(ctx),
     createBashTool(ctx),
+    undoSlideEditsTool,
     // PPT read tools
     screenshotSlideTool,
     listSlideShapesTool,

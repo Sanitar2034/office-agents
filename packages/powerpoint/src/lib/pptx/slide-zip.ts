@@ -1,6 +1,10 @@
 import type JSZip from "jszip";
 import { default as JSZipCtor } from "jszip";
 import { extractExternalReferences, sanitizeXmlAmpersands } from "./xml-utils";
+import {
+  getSessionSlideJournal,
+  recordSlideSnapshot,
+} from "./slide-journal";
 
 /* global PowerPoint */
 
@@ -87,6 +91,9 @@ export async function withSlideZip<T>(
   });
 
   if (dirty) {
+    // undo journal: remember the ORIGINAL slide before it is replaced
+    recordSlideSnapshot(getSessionSlideJournal(), slideIndex, exportResult.value);
+
     const slideFile = zip.file("ppt/slides/slide1.xml");
     if (slideFile) {
       const slideXml = await slideFile.async("string");

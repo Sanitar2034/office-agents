@@ -1,4 +1,5 @@
 import type { AgentContext } from "@office-agents/core";
+import { undoDocumentEditsTool } from "./undo-document-edits";
 import { createBashTool, createReadTool } from "@office-agents/core";
 import { createExecuteOfficeJsTool } from "./execute-office-js";
 import { getDocumentStructureTool } from "./get-document-structure";
@@ -13,6 +14,7 @@ export function createWordTools(ctx: AgentContext) {
     // fs tools
     createReadTool(ctx),
     createBashTool(ctx),
+    undoDocumentEditsTool,
     // Word read tools
     screenshotDocumentTool,
     getDocumentTextTool,

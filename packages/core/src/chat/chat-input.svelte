@@ -100,10 +100,14 @@
 
     if (trimmed === "/undo" || trimmed.startsWith("/undo ")) {
       input = "";
-      await chat.sendMessage(
-        "Undo the agent's recent workbook edits using the undo_edits tool " +
-          "(all recorded edits).",
-      );
+      const appName = chat.adapter?.appName ?? "OpenExcel";
+      const instruction =
+        appName === "OpenWord"
+          ? "Undo the agent's document edits using the undo_document_edits tool (full body rollback)."
+          : appName === "OpenPPT"
+            ? "Undo the agent's slide edits using the undo_slide_edits tool (restore every recorded slide)."
+            : "Undo the agent's recent workbook edits using the undo_edits tool (all recorded edits).";
+      await chat.sendMessage(instruction);
       return;
     }
 

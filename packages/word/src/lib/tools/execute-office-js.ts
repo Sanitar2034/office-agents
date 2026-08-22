@@ -1,6 +1,7 @@
 import type { AgentContext } from "@office-agents/core";
 import { sandboxedEval } from "@office-agents/core";
 import { Type } from "@sinclair/typebox";
+import { getSessionWordJournal, recordBodySnapshot } from "../word-journal";
 import { defineTool, toolError, toolSuccess } from "./types";
 
 /* global Word, Office */
@@ -36,6 +37,14 @@ export function createExecuteOfficeJsTool(ctx: AgentContext) {
     execute: async (_toolCallId, params) => {
       try {
         const result = await Word.run(async (context) => {
+          // undo journal: capture the body BEFORE the agent's code mutates it
+          try {
+            const ooxml = context.document.body.getOoxml();
+            await context.sync();
+            recordBodySnapshot(getSessionWordJournal(), ooxml.value);
+          } catch {
+            // snapshot is best-effort; edits still run
+          }
           return sandboxedEval(params.code, {
             context,
             Word,
