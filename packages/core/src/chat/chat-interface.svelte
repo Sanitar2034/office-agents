@@ -7,6 +7,7 @@
     EyeOff,
     FolderOpen,
     MessageSquare,
+    Download,
     Moon,
     Plus,
     Settings,
@@ -21,6 +22,7 @@
   import ChatInput from "./chat-input.svelte";
   import FilesPanel from "./files-panel.svelte";
   import MessageList from "./message-list.svelte";
+import { downloadSessionMarkdown, renderSessionMarkdown } from "./export-session";
   import SettingsPanel from "./settings-panel.svelte";
   import type { ChatTab } from "./types";
 
@@ -159,6 +161,18 @@
     currentName.length > 20 ? `${currentName.slice(0, 18)}…` : currentName,
   );
   const followMode = $derived($runtimeState.providerConfig?.followMode ?? true);
+
+  function handleExportSession() {
+    if ($runtimeState.messages.length === 0) return;
+    const name = $runtimeState.currentSession?.name ?? "chat";
+    const md = renderSessionMarkdown($runtimeState.messages, {
+      title: name,
+      exportedAt: new Date(),
+    });
+    const safe = name.replace(/[^\w\-Ѐ-ӿ]+/g, "_").slice(0, 40) || "chat";
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadSessionMarkdown(md, `${safe}-${stamp}.md`);
+  }
   const HeaderExtras = $derived(adapter.HeaderExtras);
   const SelectionIndicator = $derived(adapter.SelectionIndicator);
 </script>
@@ -324,6 +338,14 @@
         </button>
 
         {#if activeTab === "chat" && $runtimeState.messages.length > 0}
+          <button
+            type="button"
+            onclick={handleExportSession}
+            class="p-1.5 text-(--chat-text-muted) hover:text-(--chat-text-primary) transition-colors"
+            data-tooltip="Export chat as Markdown"
+          >
+            <Download size={14} />
+          </button>
           <button
             type="button"
             onclick={() => controller.clearMessages()}
