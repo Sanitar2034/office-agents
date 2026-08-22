@@ -20,4 +20,7 @@ describe("buildPowerPointSystemPrompt slide-size fallback", () => {
   it("documents the EMU-to-points conversion", () => {
     expect(prompt).toContain("EMU / 12700");
   });
+  it("tells the agent to track multi-step work with todo_write", () => {
+    expect(prompt).toContain("todo_write");
+  });
 });

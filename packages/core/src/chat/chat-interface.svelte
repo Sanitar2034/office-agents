@@ -338,6 +338,50 @@
   </div>
 
   {#if activeTab === "chat"}
+    {#if $runtimeState.todos.length > 0}
+      {@const todosDone = $runtimeState.todos.filter(
+        (t) => t.status === "completed",
+      ).length}
+      <div
+        class="px-3 py-2 border-b border-(--chat-border) bg-(--chat-bg-secondary)"
+      >
+        <div class="text-[10px] uppercase tracking-wider text-(--chat-text-muted) mb-1">
+          tasks {todosDone}/{$runtimeState.todos.length}
+        </div>
+        <div class="space-y-0.5">
+          {#each $runtimeState.todos as todo (todo.content)}
+            <div class="flex items-center gap-2 text-[11px] leading-snug">
+              <span
+                class={`shrink-0 ${
+                  todo.status === "completed"
+                    ? "text-(--chat-success)"
+                    : todo.status === "in_progress"
+                      ? "text-(--chat-accent) animate-pulse"
+                      : "text-(--chat-text-muted)"
+                }`}
+              >
+                {todo.status === "completed"
+                  ? "●"
+                  : todo.status === "in_progress"
+                    ? "◐"
+                    : "○"}
+              </span>
+              <span
+                class={`min-w-0 ${
+                  todo.status === "completed"
+                    ? "line-through text-(--chat-text-muted)"
+                    : todo.status === "in_progress"
+                      ? "text-(--chat-text-primary)"
+                      : "text-(--chat-text-secondary)"
+                }`}
+              >
+                {todo.content}
+              </span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <MessageList />
     {#if SelectionIndicator}
       <SelectionIndicator />

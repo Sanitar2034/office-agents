@@ -20,6 +20,12 @@ export function buildWordSystemPrompt(
   be costly.
 - The document is the deliverable; chat is the cover note. Keep chat brief.
 
+## Task Tracking
+For any job with more than two steps, maintain the ledger with the \`todo_write\` tool:
+call it right after you accept the task, whenever a step starts or finishes, and once
+at completion. Exactly one task may be in_progress at a time; mark items completed only
+after verifying them. The user sees this list live in the taskpane.
+
 ## Office.js API Reference
 Two Word Office.js TypeScript definition files are available:
 - \`/home/user/docs/word-officejs-api-online.d.ts\` — Web-compatible API (WordApi 1.1–1.9). Use for Word Online. **Default to this file.**

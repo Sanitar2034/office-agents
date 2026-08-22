@@ -98,6 +98,10 @@ foreach ($app in 'excel', 'powerpoint', 'word') {
         (Get-ChildItem (Join-Path $site "$app\assets") -Filter '*.js' -Recurse |
             Select-String -Pattern 'dev-registration' -List -Quiet)
     )
+    Assert "$app bundle ships the todo_write task ledger" (
+        (Get-ChildItem (Join-Path $site "$app\assets") -Filter '*.js' -Recurse |
+            Select-String -Pattern 'todo_write' -List -Quiet)
+    )
 }
 Assert "word bundle ships requirement guards (optional-feature sets)" (
     (Get-ChildItem (Join-Path $site 'word\assets') -Filter '*.js' -Recurse |

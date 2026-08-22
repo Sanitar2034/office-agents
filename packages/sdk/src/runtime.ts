@@ -58,6 +58,7 @@ import {
   saveSession,
   saveVfsFiles,
 } from "./storage";
+import { createTodoTool, type TodoItem, type TodoStore } from "./tools/todo";
 import type { CustomCommandsResult } from "./vfs/custom-commands";
 
 export interface RuntimeAdapter {
@@ -97,6 +98,7 @@ export interface RuntimeState {
   isUploading: boolean;
   skills: SkillMeta[];
   vfsInvalidatedAt: number;
+  todos: TodoItem[];
 }
 
 type StateListener = (state: RuntimeState) => void;
@@ -177,10 +179,20 @@ export class AgentRuntime {
   }
 
   private get tools(): AgentTool[] {
-    return typeof this.adapter.tools === "function"
-      ? this.adapter.tools(this.context)
-      : this.adapter.tools;
+    const base =
+      typeof this.adapter.tools === "function"
+        ? this.adapter.tools(this.context)
+        : this.adapter.tools;
+    // shared harness tools appended for every application
+    return [...base, this.todoTool];
   }
+
+  private todoStore: TodoStore = {
+    get: () => this.state.todos,
+    set: (todos: TodoItem[]) => this.update({ todos }),
+  };
+
+  private todoTool = createTodoTool(this.todoStore);
 
   constructor(adapter: RuntimeAdapter, context: AgentContext) {
     this.adapter = adapter;
@@ -203,6 +215,7 @@ export class AgentRuntime {
       isUploading: false,
       skills: [],
       vfsInvalidatedAt: 0,
+      todos: [],
     };
   }
 
