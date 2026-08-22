@@ -1528,7 +1528,7 @@
     <textarea
       bind:value={hooksText}
       rows="3"
-      placeholder='[{"toolPattern":"pbi_*","action":"block","note":"BI locked"}]'
+      placeholder={'[{"toolPattern":"pbi_*","action":"block","note":"BI locked"}]'}
       class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-[10px] px-2 py-1.5 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) resize-y font-mono"
     ></textarea>
     <div class="flex items-center gap-2">
