@@ -39,6 +39,7 @@ describe("compactBulkyToolArgs", () => {
     expect(call.id).toBe("call-1");
     expect(call.arguments.range).toBe("B2:C41");
     expect(String(call.arguments.values)).toMatch(/COMPACTED/i);
+    expect(String(call.arguments.values)).toMatch(/B2:C41/);
     // the tool result pair is untouched
     expect((res.messages[1] as any).content[0].text).toBe('{"success":true}');
   });
@@ -77,6 +78,34 @@ describe("compactBulkyToolArgs", () => {
     expect(res.compactedCalls).toBe(1);
     const call = (res.messages[0] as any).content[0];
     expect(String(call.arguments.code)).toMatch(/COMPACTED.*code/i);
+  });
+
+  it("slide tools keep slide/shape identifiers in the digest", () => {
+    const messages = [
+      assistantWithToolCall("edit_slide_text", {
+        slide_index: 2,
+        shape_id: 12,
+        text: "line\n".repeat(200),
+      }),
+      toolResult(),
+    ];
+    const res = compactBulkyToolArgs(messages, 0);
+    const call = (res.messages[0] as any).content[0];
+    expect(String(call.arguments.text)).toMatch(/slide 3/);
+    expect(String(call.arguments.text)).toMatch(/shape 12/);
+  });
+
+  it("code digests use the explanation when no address fields exist", () => {
+    const messages = [
+      assistantWithToolCall("execute_office_js", {
+        code: "const x = 1;\n".repeat(200),
+        explanation: "fill Q3 totals",
+      }),
+      toolResult(),
+    ];
+    const res = compactBulkyToolArgs(messages, 0);
+    const call = (res.messages[0] as any).content[0];
+    expect(String(call.arguments.code)).toMatch(/fill Q3 totals/);
   });
 
   it("never touches non-bulky tools (read, todo_write, bash)", () => {
