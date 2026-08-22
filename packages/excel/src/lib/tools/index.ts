@@ -42,6 +42,7 @@ import { createPbiDmvTool } from "./pbi-dmv";
 import { initUndoJournal } from "../excel/undo-journal";
 import { searchDataTool } from "./search-data";
 import { setCellRangeTool } from "./set-cell-range";
+import { createVerifyEditsTool } from "./verify-edits";
 
 export function createExcelTools(ctx: AgentContext) {
   initUndoJournal(ctx.namespace.localStoragePrefix);
@@ -58,6 +59,7 @@ export function createExcelTools(ctx: AgentContext) {
     // Excel write tools
     setCellRangeTool,
     clearCellRangeTool,
+    createVerifyEditsTool(ctx),
     copyToTool,
     modifySheetStructureTool,
     modifyWorkbookStructureTool,

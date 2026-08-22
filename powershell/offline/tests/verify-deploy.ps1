@@ -44,6 +44,9 @@ foreach ($app in 'excel', 'powerpoint', 'word') {
 
 # 3) excel-specific: undo tool + COM bridge + value normalization
 $xlAssets = Join-Path $site 'excel\assets'
+Assert "excel bundle contains 'verify_edits'" (
+    (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'verify_edits' -List -Quiet)
+)
 Assert "excel bundle contains 'undo_edits'" (
     (Get-ChildItem $xlAssets -Filter '*.js' -Recurse | Select-String -Pattern 'undo_edits' -List -Quiet)
 )
