@@ -83,6 +83,14 @@ export class ChatController {
     return this.#runtime.getName(id);
   }
 
+  getDocumentConventionsText(): string {
+    return this.#runtime.getDocumentConventionsText();
+  }
+
+  setDocumentConventionsText(text: string) {
+    this.#runtime.setDocumentConventionsText(text);
+  }
+
   toggleFollowMode() {
     this.#runtime.toggleFollowMode();
   }

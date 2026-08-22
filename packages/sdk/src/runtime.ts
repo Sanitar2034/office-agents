@@ -59,6 +59,11 @@ import {
   saveVfsFiles,
 } from "./storage";
 import { createTodoTool, type TodoItem, type TodoStore } from "./tools/todo";
+import {
+  buildConventionsSection,
+  getDocumentConventions,
+  setDocumentConventions,
+} from "./storage/conventions";
 import type { CustomCommandsResult } from "./vfs/custom-commands";
 
 export interface RuntimeAdapter {
@@ -99,6 +104,7 @@ export interface RuntimeState {
   skills: SkillMeta[];
   vfsInvalidatedAt: number;
   todos: TodoItem[];
+  documentId: string | null;
 }
 
 type StateListener = (state: RuntimeState) => void;
@@ -216,6 +222,7 @@ export class AgentRuntime {
       skills: [],
       vfsInvalidatedAt: 0,
       todos: [],
+      documentId: null,
     };
   }
 
@@ -529,11 +536,12 @@ export class AgentRuntime {
       this.agent.abort();
     }
 
-    const systemPrompt = this.adapter.buildSystemPrompt(
-      this.skills,
-      this.context.commandSnippets,
-      { images: config.supportsImages !== false },
-    );
+    const systemPrompt =
+      this.adapter.buildSystemPrompt(
+        this.skills,
+        this.context.commandSnippets,
+        { images: config.supportsImages !== false },
+      ) + buildConventionsSection(getDocumentConventions(this.ns, this.documentId));
 
     const tools =
       config.supportsImages === false
@@ -1002,6 +1010,7 @@ export class AgentRuntime {
 
       const id = await this.adapter.getDocumentId();
       this.documentId = id;
+      this.update({ documentId: id });
 
       const skills = await getInstalledSkills(this.ns);
       this.skills = skills;
@@ -1121,6 +1130,20 @@ export class AgentRuntime {
       await this.refreshSkillsAndRebuildAgent();
     } catch (err) {
       console.error("[Runtime] Failed to uninstall skill:", err);
+    }
+  }
+
+  getDocumentConventionsText(): string {
+    return getDocumentConventions(this.ns, this.documentId);
+  }
+
+  setDocumentConventionsText(text: string) {
+    setDocumentConventions(this.ns, this.documentId, text);
+    // rebuild the agent so the new conventions enter the system prompt
+    if (this.config) {
+      const cfg = this.config;
+      this.config = null;
+      this.applyConfig(cfg);
     }
   }
 

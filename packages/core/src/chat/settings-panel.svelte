@@ -304,6 +304,20 @@
   }
 
   void loadDevRegistration();
+
+  // Document conventions: per-document rules injected into the system prompt
+  let conventionsText = $state("");
+  let conventionsSaved = $state(false);
+
+  $effect(() => {
+    conventionsText = chat.getDocumentConventionsText();
+  });
+
+  async function saveConventions() {
+    chat.setDocumentConventionsText(conventionsText);
+    conventionsSaved = true;
+    setTimeout(() => (conventionsSaved = false), 2000);
+  }
   let webSearchProvider = $state(savedWeb.searchProvider);
   let imageSearchProvider = $state(savedWeb.imageSearchProvider);
   let webFetchProvider = $state(savedWeb.fetchProvider);
@@ -1422,6 +1436,35 @@
         <span class="text-(--chat-text-muted)">
           Fill in all fields above to get started
         </span>
+      {/if}
+    </div>
+  </div>
+
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4 space-y-2" style="border-radius: var(--chat-radius)">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
+      document conventions
+    </div>
+    <p class="text-[10px] text-(--chat-text-muted)">
+      Rules the agent must follow in THIS document (style, units, protected
+      ranges, language). Injected into the system prompt on every turn.
+    </p>
+    <textarea
+      bind:value={conventionsText}
+      rows="4"
+      placeholder="e.g. Amounts in rubles, two decimals. Never touch row 3 (headers). Reports in Russian."
+      class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-xs px-2 py-1.5 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) resize-y"
+    ></textarea>
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        onclick={() => void saveConventions()}
+        class="px-2.5 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-primary) hover:border-(--chat-border-active) transition-colors"
+        style="border-radius: var(--chat-radius)"
+      >
+        Save conventions
+      </button>
+      {#if conventionsSaved}
+        <span class="text-[10px] text-(--chat-success)">saved</span>
       {/if}
     </div>
   </div>
