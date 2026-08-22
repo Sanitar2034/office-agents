@@ -1,32 +1,14 @@
 /**
- * Structure-preserving compaction for /compact: our write tools carry the
- * payload in ARGUMENTS (cell values, slide texts, code) while results are
- * tiny {"success":true}. Instead of replacing the conversation with a
- * summary, OLD bulky arguments are substituted with short digests.
+ * Structure-preserving compaction for /compact.
  *
- * Digests always name WHAT was touched (range / slide / shape - the fields
- * the model needs for verification and reporting), never the payload:
- * the data itself lives in the document and can be re-read via get tools.
+ * Two per-review policies:
+ * 1. Each bulky tool gets ITS OWN digest transformation that keeps what the
+ *    model needs (addresses, grid shape, the code opening, the TMSL target)
+ *    and omits what the document already holds (numbers, formulas, full code).
+ * 2. FAILED tool calls are noise: their (call + result) pairs are removed
+ *    entirely from the old region - only recent failures stay so the model
+ *    can still learn from the immediate error.
  */
-
-/** tool name -> argument fields that hold bulky payloads */
-export const BULKY_TOOL_FIELDS: Record<string, string[]> = {
-  set_cell_range: ["values", "formulas"],
-  edit_slide_text: ["text"],
-  edit_slide_xml: ["xml"],
-  edit_slide_chart: ["xml"],
-  execute_office_js: ["code"],
-  eval_officejs: ["code"],
-  pbi_execute_tmsl: ["command"],
-};
-
-/** tool name -> argument fields identifying WHAT was touched */
-const ADDRESS_FIELDS: Record<string, string[]> = {
-  set_cell_range: ["range", "sheet"],
-  edit_slide_text: ["slide_index", "shape_id"],
-  edit_slide_xml: ["slide_index"],
-  edit_slide_chart: ["slide_index"],
-};
 
 const ARRAY_THRESHOLD = 24;
 const STRING_THRESHOLD = 600;
@@ -37,85 +19,178 @@ interface ToolCallLike {
   name?: string;
   arguments?: Record<string, unknown>;
 }
+interface ResultLike {
+  role: string;
+  toolCallId?: string;
+  isError?: boolean;
+}
+type Msg = { role: string; content?: unknown };
 
-function describeAddress(args: Record<string, unknown>): string {
-  const parts: string[] = [];
-  for (const field of ["sheet", "range", "slide_index", "shape_id"]) {
-    const v = args[field];
-    if (v === undefined || v === null || v === "") continue;
-    if (field === "slide_index") {
-      parts.push(`slide ${(v as number) + 1}`);
-    } else if (field === "shape_id") {
-      parts.push(`shape ${v}`);
-    } else {
-      parts.push(String(v).slice(0, 60));
+const TAIL =
+  "- the payload lives in the document; re-read it via the get tools if needed]";
+
+function gridShape(values: unknown): string | null {
+  if (!Array.isArray(values) || values.length <= ARRAY_THRESHOLD) return null;
+  const cols = Array.isArray(values[0]) ? values[0].length : 1;
+  return `${values.length}×${cols}`;
+}
+
+function firstLine(text: unknown, max = 80): string {
+  return String(text ?? "").split("\n")[0].slice(0, max);
+}
+
+/** per-tool argument transformers; return new args or null to keep as-is */
+const TOOL_DIGESTERS: Record<
+  string,
+  (args: Record<string, unknown>) => Record<string, unknown> | null
+> = {
+  set_cell_range: (args) => {
+    let changed = false;
+    const out = { ...args };
+    for (const field of ["values", "formulas"] as const) {
+      const shape = gridShape(args[field]);
+      if (!shape) continue;
+      out[field] =
+        `[COMPACTED ${field}: ${shape} grid${args.range ? ` → ${args.range}` : ""} ${TAIL}`;
+      changed = true;
     }
-  }
-  return parts.join(", ");
-}
+    return changed ? out : null;
+  },
+  edit_slide_text: (args) => {
+    const text = args.text;
+    if (typeof text !== "string" || text.length <= STRING_THRESHOLD) return null;
+    const at =
+      `slide ${(args.slide_index as number) + 1}` +
+      (args.shape_id !== undefined ? `, shape ${args.shape_id}` : "");
+    return {
+      ...args,
+      text: `[COMPACTED text: ${text.length} chars → ${at} (first line: "${firstLine(text)}") ${TAIL}`,
+    };
+  },
+  edit_slide_xml: (args) => slideXmlDigest(args, "xml"),
+  edit_slide_chart: (args) => slideXmlDigest(args, "xml"),
+  execute_office_js: (args) => codeDigest(args),
+  eval_officejs: (args) => codeDigest(args),
+  pbi_execute_tmsl: (args) => {
+    const command = args.command;
+    if (typeof command !== "string" || command.length <= STRING_THRESHOLD) return null;
+    let target = "";
+    try {
+      const parsed = JSON.parse(command);
+      const verb = Object.keys(parsed)[0];
+      const table =
+        parsed?.[verb]?.table?.name ?? parsed?.[verb]?.object?.name ?? undefined;
+      target = ` (${verb}${table ? ` ${table}` : ""})`;
+    } catch {
+      // not JSON-shaped TMSL - fall back to size only
+    }
+    return {
+      ...args,
+      command: `[COMPACTED TMSL command: ${command.length} chars${target} - already applied to the model]`,
+    };
+  },
+};
 
-function compactValue(
-  value: unknown,
-  field: string,
+function slideXmlDigest(
   args: Record<string, unknown>,
-): unknown | undefined {
-  const size = Array.isArray(value)
-    ? value.length
-    : typeof value === "string"
-      ? value.length
-      : 0;
-  if (size === 0) return undefined;
-  if (Array.isArray(value) && size <= ARRAY_THRESHOLD) return undefined;
-  if (typeof value === "string" && size <= STRING_THRESHOLD) return undefined;
-
-  const where = describeAddress(args);
-  const what = where || (typeof args.explanation === "string" ? args.explanation.slice(0, 100) : "");
-  const unit = Array.isArray(value) ? `${size} ${field} items` : `${size} chars of ${field}`;
-  return (
-    `[COMPACTED: ${unit} omitted${what ? ` (${what})` : ""} - ` +
-    "the payload lives in the document; re-read it via the get tools if needed]"
-  );
+  field: string,
+): Record<string, unknown> | null {
+  const xml = args[field];
+  if (typeof xml !== "string" || xml.length <= STRING_THRESHOLD) return null;
+  return {
+    ...args,
+    [field]:
+      `[COMPACTED ${field}: ${xml.length} chars → slide ${(args.slide_index as number) + 1} ${TAIL}`,
+  };
 }
 
-export function compactBulkyToolArgs<T extends { role: string; content?: unknown }>(
+function codeDigest(args: Record<string, unknown>): Record<string, unknown> | null {
+  const code = args.code;
+  if (typeof code !== "string" || code.length <= STRING_THRESHOLD) return null;
+  const why =
+    typeof args.explanation === "string" && args.explanation.trim()
+      ? args.explanation.slice(0, 100)
+      : "";
+  return {
+    ...args,
+    code:
+      `[COMPACTED code: ${code.length} chars` +
+      `${why ? ` (${why}` : ""}${why ? `; starts: "${firstLine(code, 60)}")` : ")"}` +
+      ` ${TAIL}`,
+  };
+}
+
+export function compactBulkyToolArgs<T extends Msg>(
   messages: T[],
   keepRecent: number,
-): { messages: T[]; compactedCalls: number } {
+): { messages: T[]; compactedCalls: number; removedFailedCalls: number } {
   const cutoff = Math.max(0, messages.length - keepRecent);
   let compactedCalls = 0;
+  let removedFailedCalls = 0;
   let changed = false;
 
-  const out = messages.map((msg, index) => {
-    if (index >= cutoff || msg.role !== "assistant" || !Array.isArray(msg.content)) {
-      return msg;
+  // Pass 1: ids of FAILED tool results in the old region
+  const failedIds = new Set<string>();
+  messages.forEach((msg, index) => {
+    if (index >= cutoff) return;
+    const r = msg as unknown as ResultLike;
+    if (r.role === "toolResult" && r.isError && r.toolCallId) {
+      failedIds.add(r.toolCallId);
+      removedFailedCalls += 1;
     }
-    const blocks = msg.content as unknown[];
-    let msgChanged = false;
-    const newBlocks = blocks.map((block) => {
-      const call = block as ToolCallLike;
-      if (!call || call.type !== "toolCall" || !call.name) return block;
-      const fields = BULKY_TOOL_FIELDS[call.name];
-      if (!fields || !call.arguments) return block;
-
-      const newArgs: Record<string, unknown> = { ...call.arguments };
-      let argsChanged = false;
-      for (const field of fields) {
-        const replacement = compactValue(call.arguments[field], field, call.arguments);
-        if (replacement !== undefined) {
-          newArgs[field] = replacement;
-          argsChanged = true;
-        }
-      }
-      if (!argsChanged) return block;
-      msgChanged = true;
-      compactedCalls += 1;
-      return { ...call, arguments: newArgs };
-    });
-
-    if (!msgChanged) return msg;
-    changed = true;
-    return { ...msg, content: newBlocks };
   });
 
-  return { messages: changed ? out : messages, compactedCalls };
+  // Pass 2: rebuild the old region - drop failed pairs, digest bulky args
+  const out: T[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (i >= cutoff) {
+      out.push(msg);
+      continue;
+    }
+
+    const asResult = msg as unknown as ResultLike;
+    if (asResult.role === "toolResult" && failedIds.has(asResult.toolCallId ?? "")) {
+      changed = true; // dropped failed result
+      continue;
+    }
+
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) {
+      out.push(msg);
+      continue;
+    }
+
+    let msgChanged = false;
+    const newBlocks = (msg.content as unknown[])
+      .map((block) => {
+        const call = block as ToolCallLike;
+        if (call?.type !== "toolCall") return block;
+        if (failedIds.has(call.id ?? "")) {
+          msgChanged = true;
+          return null; // drop the failed call
+        }
+        const digester = call.name ? TOOL_DIGESTERS[call.name] : undefined;
+        if (!digester || !call.arguments) return block;
+        const digested = digester(call.arguments);
+        if (!digested) return block;
+        msgChanged = true;
+        compactedCalls += 1;
+        return { ...call, arguments: digested };
+      })
+      .filter((b) => b !== null);
+
+    if (!msgChanged) {
+      out.push(msg);
+      continue;
+    }
+    changed = true;
+    if (newBlocks.length === 0) continue; // whole assistant message was failed calls
+    out.push({ ...msg, content: newBlocks } as T);
+  }
+
+  return {
+    messages: changed ? out : messages,
+    compactedCalls,
+    removedFailedCalls,
+  };
 }
