@@ -59,6 +59,13 @@ import {
   saveVfsFiles,
 } from "./storage";
 import { createMemoryTool } from "./tools/memory";
+import {
+  loadToolHooks,
+  matchToolHook,
+  saveToolHooks,
+  validateHookRules,
+  type ToolHookRule,
+} from "./tool-hooks";
 import { createTodoTool, type TodoItem, type TodoStore } from "./tools/todo";
 import {
   ApprovalGate,
@@ -205,10 +212,40 @@ export class AgentRuntime {
         : this.adapter.tools;
     // shared harness tools appended for every application
     const all = [...base, this.todoTool, this.askUserTool, this.memoryTool];
-    if (this.approvalGate.mode !== "ask") return all;
-    return all.map((tool) =>
+    const hooked = all.map((tool) => this.wrapWithHooks(tool));
+    if (this.approvalGate.mode !== "ask") return hooked;
+    return hooked.map((tool) =>
       isDangerousTool(tool.name) ? this.wrapWithApproval(tool) : tool,
     );
+  }
+
+  private hookRules: ToolHookRule[] | null = null;
+
+  private wrapWithHooks(tool: AgentTool): AgentTool {
+    const rules =
+      this.hookRules ?? (this.hookRules = loadToolHooks(this.ns));
+    if (!rules.some((r) => matchToolHook(tool.name, [r]))) return tool;
+    return {
+      ...tool,
+      execute: async (toolCallId, params, signal) => {
+        const fresh = this.hookRules ?? (this.hookRules = loadToolHooks(this.ns));
+        const hit = matchToolHook(tool.name, fresh);
+        if (hit?.action === "block") {
+          return sdkToolError(
+            `Blocked by tool hook "${hit.toolPattern}".${hit.note ? ` ${hit.note}` : ""} ` +
+              "This restriction is user-configured; do not attempt to bypass it.",
+          );
+        }
+        if (hit?.action === "log") {
+          try {
+            console.log(`[hook:log] ${tool.name}`, params);
+          } catch {
+            // logging must never break execution
+          }
+        }
+        return tool.execute(toolCallId, params, signal);
+      },
+    };
   }
 
   private approvalGate = new ApprovalGate("auto", (pending) =>
@@ -1223,6 +1260,24 @@ export class AgentRuntime {
       this.config = null;
       this.applyConfig(cfg);
     }
+  }
+
+  getToolHooksJson(): string {
+    return JSON.stringify(loadToolHooks(this.ns), null, 2);
+  }
+
+  setToolHooksJson(json: string): { ok: boolean; errors: string[] } {
+    let parsed: unknown;
+    try {
+      parsed = json.trim() ? JSON.parse(json) : [];
+    } catch (e) {
+      return { ok: false, errors: [e instanceof Error ? e.message : "invalid JSON"] };
+    }
+    const { rules, errors } = validateHookRules(parsed);
+    if (errors.length > 0) return { ok: false, errors };
+    saveToolHooks(this.ns, rules);
+    this.hookRules = rules;
+    return { ok: true, errors: [] };
   }
 
   getAgentMemoryText(): string {

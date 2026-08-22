@@ -91,6 +91,14 @@ export class ChatController {
     this.#runtime.setDocumentConventionsText(text);
   }
 
+  getToolHooksJson(): string {
+    return this.#runtime.getToolHooksJson();
+  }
+
+  setToolHooksJson(json: string): { ok: boolean; errors: string[] } {
+    return this.#runtime.setToolHooksJson(json);
+  }
+
   getAgentMemoryText(): string {
     return this.#runtime.getAgentMemoryText();
   }

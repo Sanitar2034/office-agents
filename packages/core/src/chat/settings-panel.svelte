@@ -320,6 +320,21 @@
     memoryText = chat.getAgentMemoryText();
   });
 
+  let hooksText = $state("");
+  let hooksStatus = $state<{ ok: boolean; msg: string } | null>(null);
+
+  $effect(() => {
+    hooksText = chat.getToolHooksJson();
+  });
+
+  function saveHooks() {
+    const res = chat.setToolHooksJson(hooksText);
+    hooksStatus = res.ok
+      ? { ok: true, msg: "saved" }
+      : { ok: false, msg: res.errors.join("; ") };
+    setTimeout(() => (hooksStatus = null), 4000);
+  }
+
   async function saveMemory() {
     chat.setAgentMemoryText(memoryText);
     memorySaved = true;
@@ -1498,6 +1513,37 @@
       </button>
       {#if memorySaved}
         <span class="text-[10px] text-(--chat-success)">saved</span>
+      {/if}
+    </div>
+  </div>
+
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4 space-y-2" style="border-radius: var(--chat-radius)">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
+      tool hooks
+    </div>
+    <p class="text-[10px] text-(--chat-text-muted)">
+      Deterministic pre-tool rules (do not rely on the model obeying):
+      block or log tool calls by name pattern. First match wins.
+    </p>
+    <textarea
+      bind:value={hooksText}
+      rows="3"
+      placeholder='[{"toolPattern":"pbi_*","action":"block","note":"BI locked"}]'
+      class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-[10px] px-2 py-1.5 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) resize-y font-mono"
+    ></textarea>
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        onclick={saveHooks}
+        class="px-2.5 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-primary) hover:border-(--chat-border-active) transition-colors"
+        style="border-radius: var(--chat-radius)"
+      >
+        Save hooks
+      </button>
+      {#if hooksStatus}
+        <span class={`text-[10px] ${hooksStatus.ok ? "text-(--chat-success)" : "text-(--chat-error)"}`}>
+          {hooksStatus.msg}
+        </span>
       {/if}
     </div>
   </div>
