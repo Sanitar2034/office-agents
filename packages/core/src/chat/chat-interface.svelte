@@ -498,6 +498,19 @@ import { downloadSessionMarkdown, renderSessionMarkdown } from "./export-session
           <span title="Input tokens">
             ↑{formatTokens($runtimeState.sessionStats.inputTokens)}
           </span>
+          {#if $runtimeState.sessionStats.lastInputTokens > 0 && $runtimeState.sessionStats.cacheRead > 0}
+            {@const hitPct = Math.round(
+              ($runtimeState.sessionStats.cacheRead /
+                $runtimeState.sessionStats.lastInputTokens) *
+                100,
+            )}
+            <span
+              class={hitPct >= 60 ? "text-(--chat-success)" : ""}
+              title="Prompt-cache hit rate on the last request (cached / input tokens)"
+            >
+              ⚡{hitPct}%
+            </span>
+          {/if}
           <span title="Output tokens">
             ↓{formatTokens($runtimeState.sessionStats.outputTokens)}
           </span>

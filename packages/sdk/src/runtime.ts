@@ -59,6 +59,8 @@ import {
   saveVfsFiles,
 } from "./storage";
 import { createMemoryTool } from "./tools/memory";
+import { buildStreamOptions } from "./stream-options";
+import { buildContextPreamble, injectPreamble } from "./context-preamble";
 import {
   loadToolHooks,
   matchToolHook,
@@ -75,15 +77,10 @@ import {
 } from "./approval";
 import { toolError as sdkToolError, toolText as sdkToolText } from "./tools/types";
 import {
-  buildConventionsSection,
   getDocumentConventions,
   setDocumentConventions,
 } from "./storage/conventions";
-import {
-  buildMemorySection,
-  getAgentMemory,
-  setAgentMemory,
-} from "./storage/agent-memory";
+import { getAgentMemory, setAgentMemory } from "./storage/agent-memory";
 import type { CustomCommandsResult } from "./vfs/custom-commands";
 
 export interface RuntimeAdapter {
@@ -211,13 +208,19 @@ export class AgentRuntime {
         ? this.adapter.tools(this.context)
         : this.adapter.tools;
     // shared harness tools appended for every application
+    // stable alphabetical order: byte-identical tool schema serialization
+    // across requests is what keeps the prompt-prefix cache valid
     const all = [...base, this.todoTool, this.askUserTool, this.memoryTool];
-    const hooked = all.map((tool) => this.wrapWithHooks(tool));
+    const hooked = all
+      .map((tool) => this.wrapWithHooks(tool))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     if (this.approvalGate.mode !== "ask") return hooked;
     return hooked.map((tool) =>
       isDangerousTool(tool.name) ? this.wrapWithApproval(tool) : tool,
     );
   }
+
+  private preambleText: string | null = null;
 
   private hookRules: ToolHookRule[] | null = null;
 
@@ -648,14 +651,18 @@ export class AgentRuntime {
       this.agent.abort();
     }
 
-    const systemPrompt =
-      this.adapter.buildSystemPrompt(
-        this.skills,
-        this.context.commandSnippets,
-        { images: config.supportsImages !== false },
-      ) +
-      buildConventionsSection(getDocumentConventions(this.ns, this.documentId)) +
-      buildMemorySection(getAgentMemory(this.ns));
+    // conventions/memory deliberately NOT in the system prompt: they go into
+    // a transformContext preamble so the system prompt + tool schemas stay
+    // byte-identical and the llama.cpp prefix cache survives every turn
+    const systemPrompt = this.adapter.buildSystemPrompt(
+      this.skills,
+      this.context.commandSnippets,
+      { images: config.supportsImages !== false },
+    );
+    this.preambleText = buildContextPreamble(
+      getDocumentConventions(this.ns, this.documentId),
+      getAgentMemory(this.ns),
+    );
 
     const tools =
       config.supportsImages === false
@@ -663,6 +670,8 @@ export class AgentRuntime {
         : this.tools;
 
     const agent = new Agent({
+      transformContext: async (messages) =>
+        injectPreamble(messages, this.preambleText),
       initialState: {
         model: proxiedModel,
         systemPrompt,
@@ -673,11 +682,11 @@ export class AgentRuntime {
       streamFn: async (model, context, options) => {
         const cfg = this.config ?? config;
         const apiKey = await this.getActiveApiKey(cfg);
-        const streamOptions: Record<string, unknown> = { ...options, apiKey };
-        if (typeof cfg.temperature === "number") {
-          streamOptions.temperature = cfg.temperature;
-        }
-        return streamSimple(model, context, streamOptions);
+        return streamSimple(
+          model,
+          context,
+          buildStreamOptions(options, apiKey, cfg.temperature),
+        );
       },
     });
     this.agent = agent;
