@@ -48,7 +48,7 @@ function cellsGrid(rows: number, cols: number) {
   return Array.from({ length: rows }, () =>
     Array.from({ length: cols }, (_, c) => ({
       value: c % 2 === 0 ? c * 3 : `v${c}`,
-      cellStyles: { bold: true },
+      cellStyles: { fontWeight: "bold" },
     })),
   );
 }
@@ -116,6 +116,73 @@ describe("compactBulkyToolArgs: per-tool digests (REAL schemas)", () => {
     expect(digest.startsWith("[COMPACTED")).toBe(true);
     expect(digest.endsWith("]")).toBe(true);
     expect((digest.match(/\(/g) ?? []).length).toBe((digest.match(/\)/g) ?? []).length);
+  });
+
+  it("edit_slide_master: code digested with the slide context", () => {
+    const messages = [
+      assistantWithToolCalls([
+        {
+          id: "c1",
+          name: "edit_slide_master",
+          args: { code: "const masters = zip.folder('ppt/slideMasters');\n".repeat(100) },
+        },
+      ]),
+      toolResult("c1"),
+    ];
+    const res = compactBulkyToolArgs(messages, 0);
+    expect(res.compactedCalls).toBe(1);
+    const digest = String((res.messages[0] as any).content[0].arguments.code);
+    expect(digest).toMatch(/COMPACTED code/);
+  });
+
+  it("tmsl XMLA (non-JSON) command falls back to a size digest", () => {
+    const messages = [
+      assistantWithToolCalls([
+        { id: "c1", name: "pbi_execute_tmsl", args: { command: "<Execute xmlns=...><Statement>".padEnd(800, "x") } },
+      ]),
+      toolResult("c1"),
+    ];
+    const res = compactBulkyToolArgs(messages, 0);
+    const digest = String((res.messages[0] as any).content[0].arguments.command);
+    expect(digest).toMatch(/COMPACTED TMSL command: \d+ chars - already applied/);
+  });
+
+  it("threshold edges: 601-char code digested, 600 not; 25x1 grid digested", () => {
+    const edge = (code: string) =>
+      compactBulkyToolArgs(
+        [assistantWithToolCalls([{ id: "c1", name: "execute_office_js", args: { code } }]), toolResult("c1")],
+        0,
+      ).compactedCalls;
+    expect(edge("a".repeat(600))).toBe(0);
+    expect(edge("a".repeat(601))).toBe(1);
+
+    const grid = (rows: number) =>
+      compactBulkyToolArgs(
+        [
+          assistantWithToolCalls([
+            { id: "c1", name: "set_cell_range", args: { sheetId: 1, range: "A1", cells: cellsGrid(rows, 1) } },
+          ]),
+          toolResult("c1"),
+        ],
+        0,
+      ).compactedCalls;
+    expect(grid(24)).toBe(0); // rows within threshold AND total < 600
+    expect(grid(25)).toBe(1); // rows-only trigger (tall-narrow)
+  });
+
+  it("codeDigest second pass is an identity no-op", () => {
+    const first = compactBulkyToolArgs(
+      [
+        assistantWithToolCalls([
+          { id: "c1", name: "edit_slide_xml", args: { slide_index: 1, code: "<p:sp>".repeat(200) } },
+        ]),
+        toolResult("c1"),
+      ],
+      0,
+    );
+    const second = compactBulkyToolArgs(first.messages, 0);
+    expect(second.compactedCalls).toBe(0);
+    expect(second.messages).toBe(first.messages);
   });
 
   it("tmsl command: parsed verb + table when JSON-shaped", () => {

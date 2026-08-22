@@ -331,7 +331,7 @@
     const json = chat.getCompactionLogJson();
     if (json === "[]") return;
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadSessionMarkdown(json, `compaction-log-${stamp}.json`);
+    downloadTextFile(json, `compaction-log-${stamp}.json`, "application/json");
   }
 
   function saveHooks() {

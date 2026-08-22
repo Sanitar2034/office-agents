@@ -73,6 +73,23 @@ describe("compaction log", () => {
     expect(getCompactionLog(ns, s)).toEqual([]);
   });
 
+  it("swallows a throwing storage (logging never breaks compaction)", () => {
+    const boom = {
+      getItem: () => {
+        throw new Error("quota");
+      },
+      setItem: () => {
+        throw new Error("quota");
+      },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 0,
+    } as unknown as Storage;
+    expect(() => appendCompactionLog(ns, entry({}), boom)).not.toThrow();
+    expect(getCompactionLog(ns, boom)).toEqual([]);
+  });
+
   it("exports a readable JSON report", () => {
     const json = exportCompactionLogJson([
       entry({ ts: 1755900000000, tokensBefore: 90000, tokensAfter: 40000 }),

@@ -61,6 +61,7 @@ import {
 import { createMemoryTool } from "./tools/memory";
 import { buildStreamOptions } from "./stream-options";
 import { compactBulkyToolArgs } from "./write-args-compactor";
+import { findCompactSplit } from "./compact-split";
 import {
   appendCompactionLog,
   exportCompactionLogJson,
@@ -929,6 +930,7 @@ export class AgentRuntime {
           // persistence is best-effort; the in-memory compaction stands
         }
       }
+      void this.refreshSessions();
       appendCompactionLog(this.ns, {
         ts: Date.now(),
         kind: "structural",
@@ -947,22 +949,12 @@ export class AgentRuntime {
       messages = structuralMessages;
     }
 
-    // Split on a turn boundary (user message) so no tool call/result pair is cut.
-    let split = Math.max(1, messages.length - keepRecent);
-    for (let i = messages.length - keepRecent; i >= Math.max(1, split - 30); i--) {
-      if (messages[i]?.role === "user") {
-        split = i;
-        break;
-      }
-    }
+    // Split on a turn boundary so no tool call/result pair is cut; with a
+    // progress-guaranteed fallback for agent-driven batch runs (see
+    // compact-split.ts - never the degenerate split=1 that loops).
+    let split = findCompactSplit(messages, keepRecent);
     while (split < messages.length && messages[split].role === "toolResult") {
       split++;
-    }
-    if (split >= messages.length - 1) {
-      // no user boundary in the search window (e.g. a long parallel batch
-      // tail): fall back to splitting right after the first message rather
-      // than aborting with a misleading "context is small" error
-      split = 1;
     }
     if (split <= 0) {
       this.update({ error: "Контекст ещё мал — сжимать нечего" });
@@ -1047,8 +1039,10 @@ export class AgentRuntime {
         messagesAfter: agent.state.messages.length,
         tokensBefore,
         tokensAfter: Math.ceil(chars / 4),
-        compactedCalls: structural.compactedDetails,
-        removedFailedCalls: structural.removedDetails,
+        // the structural stage already logged its own entry - do not
+        // double-count the same digests/removals in the summary record
+        compactedCalls: [],
+        removedFailedCalls: [],
       });
     }
 

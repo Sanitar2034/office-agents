@@ -95,6 +95,7 @@ const TOOL_DIGESTERS: Record<
     };
   },
   edit_slide_text: (args) => codeDigest(args),
+  edit_slide_master: (args) => codeDigest(args),
   edit_slide_xml: (args) => codeDigest(args),
   edit_slide_chart: (args) => codeDigest(args),
   execute_office_js: (args) => codeDigest(args),
