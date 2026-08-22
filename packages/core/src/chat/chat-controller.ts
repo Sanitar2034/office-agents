@@ -91,6 +91,14 @@ export class ChatController {
     this.#runtime.setDocumentConventionsText(text);
   }
 
+  getAgentMemoryText(): string {
+    return this.#runtime.getAgentMemoryText();
+  }
+
+  setAgentMemoryText(text: string) {
+    this.#runtime.setAgentMemoryText(text);
+  }
+
   resolveApproval(id: string, outcome: { approved?: boolean; answer?: string }) {
     this.#runtime.resolveApproval(id, outcome);
   }

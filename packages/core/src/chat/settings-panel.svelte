@@ -313,6 +313,19 @@
     conventionsText = chat.getDocumentConventionsText();
   });
 
+  let memoryText = $state("");
+  let memorySaved = $state(false);
+
+  $effect(() => {
+    memoryText = chat.getAgentMemoryText();
+  });
+
+  async function saveMemory() {
+    chat.setAgentMemoryText(memoryText);
+    memorySaved = true;
+    setTimeout(() => (memorySaved = false), 2000);
+  }
+
   async function saveConventions() {
     chat.setDocumentConventionsText(conventionsText);
     conventionsSaved = true;
@@ -1455,6 +1468,36 @@
         <span class="text-(--chat-text-muted)">
           Fill in all fields above to get started
         </span>
+      {/if}
+    </div>
+  </div>
+
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4 space-y-2" style="border-radius: var(--chat-radius)">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
+      agent memory
+    </div>
+    <p class="text-[10px] text-(--chat-text-muted)">
+      Facts the agent remembers across sessions (the agent appends them via
+      memory_write; you can edit or clear them here). Injected into every
+      system prompt.
+    </p>
+    <textarea
+      bind:value={memoryText}
+      rows="4"
+      placeholder="- User prefers tables over prose (2026-08-22)"
+      class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-xs px-2 py-1.5 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) resize-y font-mono"
+    ></textarea>
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        onclick={() => void saveMemory()}
+        class="px-2.5 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-primary) hover:border-(--chat-border-active) transition-colors"
+        style="border-radius: var(--chat-radius)"
+      >
+        Save memory
+      </button>
+      {#if memorySaved}
+        <span class="text-[10px] text-(--chat-success)">saved</span>
       {/if}
     </div>
   </div>

@@ -58,6 +58,7 @@ import {
   saveSession,
   saveVfsFiles,
 } from "./storage";
+import { createMemoryTool } from "./tools/memory";
 import { createTodoTool, type TodoItem, type TodoStore } from "./tools/todo";
 import {
   ApprovalGate,
@@ -71,6 +72,11 @@ import {
   getDocumentConventions,
   setDocumentConventions,
 } from "./storage/conventions";
+import {
+  buildMemorySection,
+  getAgentMemory,
+  setAgentMemory,
+} from "./storage/agent-memory";
 import type { CustomCommandsResult } from "./vfs/custom-commands";
 
 export interface RuntimeAdapter {
@@ -198,7 +204,7 @@ export class AgentRuntime {
         ? this.adapter.tools(this.context)
         : this.adapter.tools;
     // shared harness tools appended for every application
-    const all = [...base, this.todoTool, this.askUserTool];
+    const all = [...base, this.todoTool, this.askUserTool, this.memoryTool];
     if (this.approvalGate.mode !== "ask") return all;
     return all.map((tool) =>
       isDangerousTool(tool.name) ? this.wrapWithApproval(tool) : tool,
@@ -253,6 +259,12 @@ export class AgentRuntime {
       return sdkToolText(answer);
     },
   } as AgentTool;
+
+  private _memoryTool: ReturnType<typeof createMemoryTool> | null = null;
+  private get memoryTool(): ReturnType<typeof createMemoryTool> {
+    if (!this._memoryTool) this._memoryTool = createMemoryTool(this.ns);
+    return this._memoryTool;
+  }
 
   private todoStore: TodoStore = {
     get: () => this.state.todos,
@@ -604,7 +616,9 @@ export class AgentRuntime {
         this.skills,
         this.context.commandSnippets,
         { images: config.supportsImages !== false },
-      ) + buildConventionsSection(getDocumentConventions(this.ns, this.documentId));
+      ) +
+      buildConventionsSection(getDocumentConventions(this.ns, this.documentId)) +
+      buildMemorySection(getAgentMemory(this.ns));
 
     const tools =
       config.supportsImages === false
@@ -1204,6 +1218,19 @@ export class AgentRuntime {
   setDocumentConventionsText(text: string) {
     setDocumentConventions(this.ns, this.documentId, text);
     // rebuild the agent so the new conventions enter the system prompt
+    if (this.config) {
+      const cfg = this.config;
+      this.config = null;
+      this.applyConfig(cfg);
+    }
+  }
+
+  getAgentMemoryText(): string {
+    return getAgentMemory(this.ns);
+  }
+
+  setAgentMemoryText(text: string) {
+    setAgentMemory(this.ns, text);
     if (this.config) {
       const cfg = this.config;
       this.config = null;
