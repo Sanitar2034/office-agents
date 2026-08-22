@@ -60,6 +60,7 @@ import {
 } from "./storage";
 import { createMemoryTool } from "./tools/memory";
 import { buildStreamOptions } from "./stream-options";
+import { compactBulkyToolArgs } from "./write-args-compactor";
 import { buildContextPreamble, injectPreamble } from "./context-preamble";
 import {
   loadToolHooks,
@@ -881,10 +882,35 @@ export class AgentRuntime {
       this.update({ error: "Дождитесь окончания ответа" });
       return false;
     }
-    const messages = [...agent.state.messages];
+    let messages = [...agent.state.messages];
     if (messages.length <= keepRecent + 2) {
       this.update({ error: "Контекст ещё мал — сжимать нечего" });
       return false;
+    }
+
+    // Stage 1: structure-preserving compaction. Write-tool arguments carry
+    // the payload (cell values, slide texts, code); results are tiny. Replace
+    // OLD bulky arguments with digests - the trace, ranges and results stay
+    // verbatim. If that frees enough context, skip the LLM summary entirely.
+    const structural = compactBulkyToolArgs(messages, keepRecent);
+    if (structural.compactedCalls > 0) {
+      const limit = this.state.sessionStats.contextWindow;
+      const structuralMessages = structural.messages as typeof messages;
+      let chars = agent.state.systemPrompt?.length ?? 0;
+      for (const msg of structuralMessages) chars += JSON.stringify(msg).length;
+      const structuralEstimate = Math.ceil(chars / 4);
+      if (limit <= 0 || structuralEstimate < limit * 0.75) {
+        agent.state.messages = structuralMessages;
+        this.update({
+          messages: agentMessagesToChatMessages(structuralMessages),
+        });
+        this.update({
+          error: null,
+        });
+        return true;
+      }
+      // not enough - continue to the summary path with the compacted base
+      messages = structuralMessages;
     }
 
     // Split on a turn boundary (user message) so no tool call/result pair is cut.

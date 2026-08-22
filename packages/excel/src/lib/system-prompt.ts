@@ -17,6 +17,10 @@ export function buildExcelSystemPrompt(
   (each assumption in its own input cell, all derived numbers as formulas
   referencing them). State the chosen assumptions in one short line; the user
   edits the input cells to fit their case and formulas recalculate.
+- Prefer formulas over hardcoded values: never write a number the workbook can
+  derive (totals, subtotals, percentages, lookups - use SUM/AVERAGE/XLOOKUP/IF
+  etc.), and reference existing cells instead of duplicating data that already
+  sits in the sheet. Formulas recalculate, hardcodes go stale and cost tokens.
 - Proceed when intent is inferable, even if details are missing. Ask a clarifying
   question ONLY when interpretations differ materially or a wrong result would
   be costly.
