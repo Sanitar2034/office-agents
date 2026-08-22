@@ -61,6 +61,11 @@ import {
 import { createMemoryTool } from "./tools/memory";
 import { buildStreamOptions } from "./stream-options";
 import { compactBulkyToolArgs } from "./write-args-compactor";
+import {
+  appendCompactionLog,
+  exportCompactionLogJson,
+  getCompactionLog,
+} from "./compaction-log";
 import { buildContextPreamble, injectPreamble } from "./context-preamble";
 import {
   loadToolHooks,
@@ -889,24 +894,53 @@ export class AgentRuntime {
     }
 
     // Stage 1: structure-preserving compaction. Write-tool arguments carry
-    // the payload (cell values, slide texts, code); results are tiny. Replace
-    // OLD bulky arguments with digests - the trace, ranges and results stay
-    // verbatim. If that frees enough context, skip the LLM summary entirely.
+    // the payload (cell values, slide code); results are tiny. Replace OLD
+    // bulky arguments with digests and drop failed pairs. Applied
+    // IMMEDIATELY (never hostage to the summary stage succeeding); if that
+    // frees enough context, the LLM summary is skipped entirely.
+    const limit = this.state.sessionStats.contextWindow;
+    const tokensBefore = this.estimateContextTokens();
+    const messagesBefore = agent.state.messages.length;
     const structural = compactBulkyToolArgs(messages, keepRecent);
-    if (structural.compactedCalls > 0) {
-      const limit = this.state.sessionStats.contextWindow;
+    if (structural.compactedCalls > 0 || structural.removedFailedCalls > 0) {
       const structuralMessages = structural.messages as typeof messages;
       let chars = agent.state.systemPrompt?.length ?? 0;
       for (const msg of structuralMessages) chars += JSON.stringify(msg).length;
       const structuralEstimate = Math.ceil(chars / 4);
+
+      agent.state.messages = structuralMessages;
+      this.update({
+        messages: agentMessagesToChatMessages(
+          structuralMessages,
+          this.adapter.metadataTag,
+        ),
+        // reset the stale pre-compaction reading so auto-compact does not
+        // immediately re-trigger on the next sendMessage
+        sessionStats: {
+          ...this.state.sessionStats,
+          lastInputTokens: structuralEstimate,
+        },
+        error: null,
+      });
+      if (this.currentSessionId) {
+        try {
+          await saveSession(this.ns, this.currentSessionId, structuralMessages);
+        } catch {
+          // persistence is best-effort; the in-memory compaction stands
+        }
+      }
+      appendCompactionLog(this.ns, {
+        ts: Date.now(),
+        kind: "structural",
+        messagesBefore,
+        messagesAfter: structuralMessages.length,
+        tokensBefore,
+        tokensAfter: structuralEstimate,
+        compactedCalls: structural.compactedDetails,
+        removedFailedCalls: structural.removedDetails,
+      });
+
       if (limit <= 0 || structuralEstimate < limit * 0.75) {
-        agent.state.messages = structuralMessages;
-        this.update({
-          messages: agentMessagesToChatMessages(structuralMessages),
-        });
-        this.update({
-          error: null,
-        });
         return true;
       }
       // not enough - continue to the summary path with the compacted base
@@ -924,7 +958,13 @@ export class AgentRuntime {
     while (split < messages.length && messages[split].role === "toolResult") {
       split++;
     }
-    if (split <= 0 || split >= messages.length - 1) {
+    if (split >= messages.length - 1) {
+      // no user boundary in the search window (e.g. a long parallel batch
+      // tail): fall back to splitting right after the first message rather
+      // than aborting with a misleading "context is small" error
+      split = 1;
+    }
+    if (split <= 0) {
       this.update({ error: "Контекст ещё мал — сжимать нечего" });
       return false;
     }
@@ -990,8 +1030,27 @@ export class AgentRuntime {
         agent.state.messages,
         this.adapter.metadataTag,
       ),
+      // reset the stale reading for the same reason as the structural stage
+      sessionStats: {
+        ...this.state.sessionStats,
+        lastInputTokens: 0,
+      },
       error: null,
     });
+    {
+      let chars = agent.state.systemPrompt?.length ?? 0;
+      for (const msg of agent.state.messages) chars += JSON.stringify(msg).length;
+      appendCompactionLog(this.ns, {
+        ts: Date.now(),
+        kind: "summary",
+        messagesBefore,
+        messagesAfter: agent.state.messages.length,
+        tokensBefore,
+        tokensAfter: Math.ceil(chars / 4),
+        compactedCalls: structural.compactedDetails,
+        removedFailedCalls: structural.removedDetails,
+      });
+    }
 
     if (this.currentSessionId) {
       try {
@@ -1295,6 +1354,10 @@ export class AgentRuntime {
       this.config = null;
       this.applyConfig(cfg);
     }
+  }
+
+  getCompactionLogJson(): string {
+    return exportCompactionLogJson(getCompactionLog(this.ns));
   }
 
   getToolHooksJson(): string {

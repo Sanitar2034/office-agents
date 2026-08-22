@@ -91,6 +91,10 @@ export class ChatController {
     this.#runtime.setDocumentConventionsText(text);
   }
 
+  getCompactionLogJson(): string {
+    return this.#runtime.getCompactionLogJson();
+  }
+
   getToolHooksJson(): string {
     return this.#runtime.getToolHooksJson();
   }

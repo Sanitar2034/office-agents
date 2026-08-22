@@ -327,6 +327,13 @@
     hooksText = chat.getToolHooksJson();
   });
 
+  function downloadCompactionLog() {
+    const json = chat.getCompactionLogJson();
+    if (json === "[]") return;
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadSessionMarkdown(json, `compaction-log-${stamp}.json`);
+  }
+
   function saveHooks() {
     const res = chat.setToolHooksJson(hooksText);
     hooksStatus = res.ok
@@ -1496,6 +1503,24 @@
         <span class="text-[10px] text-(--chat-success)">saved</span>
       {/if}
     </div>
+  </div>
+
+  <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4 space-y-2" style="border-radius: var(--chat-radius)">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-(--chat-text-primary)">
+      compaction audit log
+    </div>
+    <p class="text-[10px] text-(--chat-text-muted)">
+      Every /compact run is logged (what was digested or removed, token
+      savings) - the ground truth for verifying and tuning the algorithm.
+    </p>
+    <button
+      type="button"
+      onclick={downloadCompactionLog}
+      class="px-2.5 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-primary) hover:border-(--chat-border-active) transition-colors"
+      style="border-radius: var(--chat-radius)"
+    >
+      Download compaction log (.json)
+    </button>
   </div>
 
   <div class="border border-(--chat-border) bg-(--chat-bg-secondary) p-4 space-y-2" style="border-radius: var(--chat-radius)">
