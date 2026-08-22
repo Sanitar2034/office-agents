@@ -162,6 +162,17 @@ import { downloadSessionMarkdown, renderSessionMarkdown } from "./export-session
   );
   const followMode = $derived($runtimeState.providerConfig?.followMode ?? true);
 
+  let approvalAnswer = $state("");
+
+  function submitApprovalAnswer() {
+    const pa = $runtimeState.pendingApproval;
+    if (!pa) return;
+    const answer = approvalAnswer.trim();
+    if (!answer) return;
+    approvalAnswer = "";
+    controller.resolveApproval(pa.id, { answer });
+  }
+
   function handleExportSession() {
     if ($runtimeState.messages.length === 0) return;
     const name = $runtimeState.currentSession?.name ?? "chat";
@@ -407,6 +418,75 @@ import { downloadSessionMarkdown, renderSessionMarkdown } from "./export-session
     <MessageList />
     {#if SelectionIndicator}
       <SelectionIndicator />
+    {/if}
+    {#if $runtimeState.pendingApproval}
+      {@const pa = $runtimeState.pendingApproval}
+      <div
+        class="mx-3 mb-2 border border-(--chat-border-active) bg-(--chat-bg-secondary) p-3 space-y-2"
+        style="border-radius: var(--chat-radius)"
+      >
+        {#if pa.kind === "confirm"}
+          <div class="text-xs text-(--chat-text-primary)">
+            <span class="text-(--chat-accent) font-medium">Confirm edit</span>
+            — <span class="font-medium">{pa.toolName}</span>
+            {#if pa.summary}<span class="text-(--chat-text-secondary)">: {pa.summary}</span>{/if}
+          </div>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick={() => controller.resolveApproval(pa.id, { approved: true })}
+              class="px-3 py-1 text-[11px] font-medium bg-(--chat-accent) text-(--chat-bg) transition-opacity hover:opacity-90"
+              style="border-radius: var(--chat-radius)"
+            >
+              Allow
+            </button>
+            <button
+              type="button"
+              onclick={() => controller.resolveApproval(pa.id, { approved: false })}
+              class="px-3 py-1 text-[11px] font-medium bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-primary) transition-colors hover:border-(--chat-error)"
+              style="border-radius: var(--chat-radius)"
+            >
+              Deny
+            </button>
+          </div>
+        {:else}
+          <div class="text-xs text-(--chat-text-primary)">
+            <span class="text-(--chat-accent) font-medium">Agent asks</span>:
+            {pa.question}
+          </div>
+          <textarea
+            bind:value={approvalAnswer}
+            rows="2"
+            placeholder="Type your answer…"
+            onkeydown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submitApprovalAnswer();
+              }
+            }}
+            class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-xs px-2 py-1.5 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) resize-none"
+          ></textarea>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick={submitApprovalAnswer}
+              disabled={!approvalAnswer.trim()}
+              class="px-3 py-1 text-[11px] font-medium bg-(--chat-accent) text-(--chat-bg) disabled:opacity-40 transition-opacity hover:opacity-90"
+              style="border-radius: var(--chat-radius)"
+            >
+              Send answer
+            </button>
+            <button
+              type="button"
+              onclick={() => controller.cancelApproval()}
+              class="px-3 py-1 text-[11px] bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-secondary) transition-colors hover:border-(--chat-error)"
+              style="border-radius: var(--chat-radius)"
+            >
+              Dismiss
+            </button>
+          </div>
+        {/if}
+      </div>
     {/if}
     <ChatInput />
     {#if $runtimeState.providerConfig}

@@ -13,6 +13,8 @@ export interface ProviderConfig {
   thinking: ThinkingLevel;
   followMode: boolean;
   expandToolCalls: boolean;
+  /** "ask" = confirm document edits with the user, "auto" = apply directly. */
+  permissionMode: "ask" | "auto";
   /** Max context in tokens; 0 = use the model's declared context window. */
   contextLimit: number;
   /** Summarize older messages when the context nears the limit. */
@@ -79,6 +81,7 @@ export function loadSavedConfig(ns: StorageNamespace): ProviderConfig | null {
       const config = JSON.parse(saved);
       if (config.proxyUrl === undefined) config.proxyUrl = "";
       if (config.followMode === undefined) config.followMode = true;
+      if (config.permissionMode === undefined) config.permissionMode = "auto";
       if (config.expandToolCalls === undefined) config.expandToolCalls = false;
       if (config.apiType === undefined) config.apiType = "";
       if (config.customBaseUrl === undefined) config.customBaseUrl = "";

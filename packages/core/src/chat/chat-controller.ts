@@ -91,6 +91,18 @@ export class ChatController {
     this.#runtime.setDocumentConventionsText(text);
   }
 
+  resolveApproval(id: string, outcome: { approved?: boolean; answer?: string }) {
+    this.#runtime.resolveApproval(id, outcome);
+  }
+
+  cancelApproval() {
+    this.#runtime.cancelApproval();
+  }
+
+  togglePermissionMode() {
+    this.#runtime.togglePermissionMode();
+  }
+
   toggleFollowMode() {
     this.#runtime.toggleFollowMode();
   }

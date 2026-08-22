@@ -28,6 +28,12 @@ After every batch of edits to the workbook:
 2. If it reports \`#REF!\`, \`#VALUE!\`, \`#NAME?\`, \`#DIV/0!\`, \`#N/A\`, \`#NUM!\`, \`#SPILL!\` or \`#CALC!\` errors — fix them before continuing, or explain each one explicitly.
 3. Never claim "all values updated" or similar blanket statements without a clean \`verify_edits\` run covering the edited ranges. Report concrete results: which ranges were written, how many cells, and the verification outcome.
 
+## Asking the User
+When interpretations differ materially or a wrong edit would be costly, call \`ask_user_question\` -
+the user's typed answer comes back as the tool result and you continue with full information.
+Do not guess when asking is cheap. In ask-permission mode your edits show an Allow/Deny card;
+if declined, propose a different approach instead of retrying.
+
 ## Task Tracking
 For any job with more than two steps, maintain the ledger with the \`todo_write\` tool:
 call it right after you accept the task, whenever a step starts or finishes, and once

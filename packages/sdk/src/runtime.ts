@@ -60,6 +60,13 @@ import {
 } from "./storage";
 import { createTodoTool, type TodoItem, type TodoStore } from "./tools/todo";
 import {
+  ApprovalGate,
+  type PendingApproval,
+  type PermissionMode,
+  isDangerousTool,
+} from "./approval";
+import { toolError as sdkToolError, toolText as sdkToolText } from "./tools/types";
+import {
   buildConventionsSection,
   getDocumentConventions,
   setDocumentConventions,
@@ -105,6 +112,7 @@ export interface RuntimeState {
   vfsInvalidatedAt: number;
   todos: TodoItem[];
   documentId: string | null;
+  pendingApproval: PendingApproval | null;
 }
 
 type StateListener = (state: RuntimeState) => void;
@@ -190,8 +198,61 @@ export class AgentRuntime {
         ? this.adapter.tools(this.context)
         : this.adapter.tools;
     // shared harness tools appended for every application
-    return [...base, this.todoTool];
+    const all = [...base, this.todoTool, this.askUserTool];
+    if (this.approvalGate.mode !== "ask") return all;
+    return all.map((tool) =>
+      isDangerousTool(tool.name) ? this.wrapWithApproval(tool) : tool,
+    );
   }
+
+  private approvalGate = new ApprovalGate("auto", (pending) =>
+    this.update({ pendingApproval: pending }),
+  );
+
+  private wrapWithApproval(tool: AgentTool): AgentTool {
+    return {
+      ...tool,
+      execute: async (toolCallId, params, signal) => {
+        const ok = await this.approvalGate.requestConfirm(
+          tool.name,
+          (params ?? {}) as Record<string, unknown>,
+        );
+        if (ok === false) {
+          return sdkToolError(
+            "The user DECLINED this action. Do not retry it; ask what to change " +
+              "or continue with a different approach.",
+          );
+        }
+        return tool.execute(toolCallId, params, signal);
+      },
+    };
+  }
+
+  private askUserTool = {
+    name: "ask_user_question",
+    label: "Ask the User",
+    description:
+      "Ask the user a clarifying question and WAIT for their typed answer - it " +
+      "arrives as this tool's result. Use when interpretations differ materially " +
+      "or a wrong action would be costly. Do not guess instead of asking.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "The question to show the user (one focused question)",
+        },
+      },
+      required: ["question"],
+    } as Record<string, unknown>,
+    execute: async (_toolCallId: string, params: { question: string }) => {
+      const answer = await this.approvalGate.requestAnswer(params.question);
+      if (answer === null) {
+        return sdkToolError("The user dismissed the question.");
+      }
+      return sdkToolText(answer);
+    },
+  } as AgentTool;
 
   private todoStore: TodoStore = {
     get: () => this.state.todos,
@@ -223,6 +284,7 @@ export class AgentRuntime {
       vfsInvalidatedAt: 0,
       todos: [],
       documentId: null,
+      pendingApproval: null,
     };
   }
 
@@ -524,6 +586,7 @@ export class AgentRuntime {
       contextWindow = config.contextLimit;
     }
     this.config = config;
+    this.approvalGate.setMode(config.permissionMode === "ask" ? "ask" : "auto");
 
     let modelForAgent = baseModel;
     if (contextWindow !== baseModel.contextWindow) {
@@ -591,6 +654,7 @@ export class AgentRuntime {
   }
 
   abort() {
+    this.cancelApproval();
     this.agent?.abort();
     this.isStreaming = false;
     this.update({ isStreaming: false });
@@ -1145,6 +1209,24 @@ export class AgentRuntime {
       this.config = null;
       this.applyConfig(cfg);
     }
+  }
+
+  resolveApproval(id: string, outcome: { approved?: boolean; answer?: string }) {
+    this.approvalGate.resolve(id, outcome);
+  }
+
+  cancelApproval() {
+    this.approvalGate.cancelPending();
+  }
+
+  togglePermissionMode() {
+    if (!this.state.providerConfig) return;
+    const permissionMode: PermissionMode =
+      this.state.providerConfig.permissionMode === "ask" ? "auto" : "ask";
+    this.approvalGate.setMode(permissionMode);
+    const newConfig = { ...this.state.providerConfig, permissionMode };
+    saveConfig(this.ns, newConfig);
+    this.update({ providerConfig: newConfig });
   }
 
   toggleFollowMode() {
