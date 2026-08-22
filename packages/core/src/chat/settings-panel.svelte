@@ -1203,25 +1203,6 @@
       <div class="flex items-center justify-between">
         <div>
           <span class="text-xs text-(--chat-text-secondary)">
-            Confirm before edits
-          </span>
-          <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
-            Ask mode: document-changing tools show an Allow/Deny card before
-            running. Off: edits apply directly.
-          </p>
-        </div>
-        {@render toggleSwitch(
-          ($runtimeState.providerConfig?.permissionMode ?? "auto") === "ask",
-          () => chat.togglePermissionMode(),
-          ($runtimeState.providerConfig?.permissionMode ?? "auto") === "ask"
-            ? "Disable edit confirmation"
-            : "Enable edit confirmation",
-        )}
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs text-(--chat-text-secondary)">
             Expand Tool Calls
           </span>
           <p class="text-[10px] text-(--chat-text-muted) mt-0.5">

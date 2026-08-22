@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Paperclip, Send, Square, X } from "lucide-svelte";
+  import { Paperclip, Send, Shield, Square, X } from "lucide-svelte";
   import { getChatContext } from "./chat-runtime-context";
   import {
     addPrompt,
@@ -407,9 +407,27 @@
     ></textarea>
 
     <div class="flex items-center justify-between px-1.5 py-1">
-      <button
-        type="button"
-        onclick={() => fileInputRef?.click()}
+      <div class="flex items-center gap-1.5">
+        <button
+          type="button"
+          onclick={() => chat.togglePermissionMode()}
+          disabled={!$runtimeState.providerConfig}
+          class={`flex items-center gap-1 px-1.5 h-5 text-[10px] border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+            ($runtimeState.providerConfig?.permissionMode ?? "auto") === "ask"
+              ? "border-(--chat-accent) text-(--chat-accent)"
+              : "border-(--chat-border) text-(--chat-text-muted) hover:text-(--chat-text-primary) hover:border-(--chat-border-active)"
+          }`}
+          style="border-radius: var(--chat-radius)"
+          title={(($runtimeState.providerConfig?.permissionMode ?? "auto") === "ask")
+            ? "Ask mode: every document edit needs your confirmation (click to switch to auto)"
+            : "Auto mode: edits apply directly (click to require confirmation)"}
+        >
+          <Shield size={11} />
+          <span>{($runtimeState.providerConfig?.permissionMode ?? "auto") === "ask" ? "ask" : "auto"}</span>
+        </button>
+        <button
+          type="button"
+          onclick={() => fileInputRef?.click()}
         disabled={$runtimeState.isUploading || $runtimeState.isStreaming}
         class="flex items-center justify-center w-6 h-5 text-(--chat-text-muted) hover:text-(--chat-text-primary) disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         title="Upload files"
@@ -419,6 +437,7 @@
           class={$runtimeState.isUploading ? "animate-pulse" : ""}
         />
       </button>
+      </div>
 
       {#if $runtimeState.isStreaming}
         <button
